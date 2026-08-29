@@ -5,14 +5,14 @@ from botocore.exceptions import ClientError
 
 
 class S3Storage:
-    def __init__(self):
+    def __init__(self, client=None):
         self.bucket_name = os.getenv("S3_BUCKET_NAME")
         self.region = os.getenv("AWS_REGION")
 
         if not self.bucket_name:
             raise ValueError("S3_BUCKET_NAME is not configured")
 
-        self.client = boto3.client(
+        self.client = client or boto3.client(
             "s3",
             region_name=self.region,
         )
