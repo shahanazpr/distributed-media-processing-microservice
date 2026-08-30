@@ -261,22 +261,26 @@ pip install -r requirements.txt
 
 ### 4. Configure environment variables
 
-Create a local `.env` file based on `.env.example`.
+Copy `.env.example` to `.env` and fill in your local values:
 
-Example configuration:
-
-```env
-AWS_REGION=ap-south-1
-S3_BUCKET_NAME=your-bucket-name
-
-REDIS_URL=redis://localhost:6379/0
-
-RABBITMQ_URL=amqp://guest:guest@localhost:5672//
-CELERY_BROKER_URL=amqp://guest:guest@localhost:5672//
-CELERY_RESULT_BACKEND=redis://localhost:6379/0
+```powershell
+Copy-Item .env.example .env
 ```
 
-Do not commit the `.env` file.
+| Variable | Description | Default |
+|---|---|---|
+| APP_ENV | development/production | development |
+| AWS_ACCESS_KEY_ID | AWS IAM access key | — |
+| AWS_SECRET_ACCESS_KEY | AWS IAM secret key | — |
+| AWS_REGION | AWS region | ap-south-1 |
+| S3_INPUT_BUCKET | Bucket for raw uploads | — |
+| S3_OUTPUT_BUCKET | Bucket for processed media | — |
+| REDIS_HOST | Redis server host | localhost |
+| REDIS_PORT | Redis server port | 6379 |
+| RABBITMQ_HOST | RabbitMQ server host | localhost |
+| RABBITMQ_PORT | RabbitMQ server port | 5672 |
+
+Do not commit the `.env` file — it's gitignored.
 
 ## Running the FastAPI Application
 
