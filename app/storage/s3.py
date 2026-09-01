@@ -18,6 +18,7 @@ class S3Storage:
         )
 
     def upload_file(self, file_path: str, object_name: str) -> None:
+        """Upload a file to the configured S3 bucket."""
         try:
             self.client.upload_file(
                 file_path,
@@ -28,6 +29,7 @@ class S3Storage:
             raise RuntimeError("S3 upload failed") from exc
 
     def download_file(self, object_name: str, file_path: str) -> None:
+        """Download a file from the configured S3 bucket."""
         try:
             self.client.download_file(
                 self.bucket_name,
@@ -43,3 +45,22 @@ class S3Storage:
                 ) from exc
 
             raise RuntimeError("S3 download failed") from exc
+
+    def object_exists(self, object_name: str) -> bool:
+        """Check whether an object exists in the configured S3 bucket."""
+        try:
+            self.client.head_object(
+                Bucket=self.bucket_name,
+                Key=object_name,
+            )
+            return True
+
+        except ClientError as exc:
+            error_code = exc.response.get("Error", {}).get("Code")
+
+            if error_code in {"404", "NoSuchKey", "NotFound"}:
+                return False
+
+            raise RuntimeError(
+                "S3 object existence check failed"
+            ) from exc

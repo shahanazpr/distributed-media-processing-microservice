@@ -1,118 +1,148 @@
 import pytest
+from unittest.mock import Mock
 from botocore.exceptions import ClientError
 
 from app.storage.s3 import S3Storage
+
+
+def create_client_error(error_code):
+    return ClientError(
+        {
+            "Error": {
+                "Code": error_code,
+                "Message": "Test error",
+            }
+        },
+        "TestOperation",
+    )
 
 
 def test_missing_bucket_configuration(monkeypatch):
     monkeypatch.delenv("S3_BUCKET_NAME", raising=False)
 
     with pytest.raises(ValueError, match="S3_BUCKET_NAME is not configured"):
-        S3Storage()
+        S3Storage(client=Mock())
 
 
-def test_upload_success(monkeypatch, tmp_path):
+def test_upload_success(monkeypatch):
     monkeypatch.setenv("S3_BUCKET_NAME", "test-bucket")
-    monkeypatch.setenv("AWS_REGION", "ap-south-1")
 
-    storage = S3Storage()
+    client = Mock()
+    storage = S3Storage(client=client)
 
-    upload_file = tmp_path / "sample.txt"
-    upload_file.write_text("test data")
+    storage.upload_file("test.mp4", "media/test.mp4")
 
-    storage.client.upload_file = lambda *args: None
-
-    storage.upload_file(str(upload_file), "sample.txt")
-
-
-def test_upload_failure(monkeypatch, tmp_path):
-    monkeypatch.setenv("S3_BUCKET_NAME", "test-bucket")
-    monkeypatch.setenv("AWS_REGION", "ap-south-1")
-
-    storage = S3Storage()
-
-    upload_file = tmp_path / "sample.txt"
-    upload_file.write_text("test data")
-
-    def failed_upload(*args):
-        raise ClientError(
-            {
-                "Error": {
-                    "Code": "500",
-                    "Message": "Upload failed",
-                }
-            },
-            "UploadFile",
-        )
-
-    storage.client.upload_file = failed_upload
-
-    with pytest.raises(RuntimeError, match="S3 upload failed"):
-        storage.upload_file(str(upload_file), "sample.txt")
-
-
-def test_download_success(monkeypatch, tmp_path):
-    monkeypatch.setenv("S3_BUCKET_NAME", "test-bucket")
-    monkeypatch.setenv("AWS_REGION", "ap-south-1")
-
-    storage = S3Storage()
-
-    download_file = tmp_path / "downloaded.txt"
-
-    storage.client.download_file = lambda *args: download_file.write_text(
-        "downloaded data"
+    client.upload_file.assert_called_once_with(
+        "test.mp4",
+        "test-bucket",
+        "media/test.mp4",
     )
 
-    storage.download_file("sample.txt", str(download_file))
 
-    assert download_file.read_text() == "downloaded data"
-
-
-def test_download_failure(monkeypatch, tmp_path):
+def test_upload_failure(monkeypatch):
     monkeypatch.setenv("S3_BUCKET_NAME", "test-bucket")
-    monkeypatch.setenv("AWS_REGION", "ap-south-1")
 
-    storage = S3Storage()
+    client = Mock()
+    client.upload_file.side_effect = create_client_error("AccessDenied")
 
-    download_file = tmp_path / "downloaded.txt"
+    storage = S3Storage(client=client)
 
-    def failed_download(*args):
-        raise ClientError(
-            {
-                "Error": {
-                    "Code": "500",
-                    "Message": "Download failed",
-                }
-            },
-            "DownloadFile",
-        )
+    with pytest.raises(RuntimeError, match="S3 upload failed"):
+        storage.upload_file("test.mp4", "media/test.mp4")
 
-    storage.client.download_file = failed_download
+
+def test_download_success(monkeypatch):
+    monkeypatch.setenv("S3_BUCKET_NAME", "test-bucket")
+
+    client = Mock()
+    storage = S3Storage(client=client)
+
+    storage.download_file(
+        "media/test.mp4",
+        "downloaded.mp4",
+    )
+
+    client.download_file.assert_called_once_with(
+        "test-bucket",
+        "media/test.mp4",
+        "downloaded.mp4",
+    )
+
+
+def test_download_failure(monkeypatch):
+    monkeypatch.setenv("S3_BUCKET_NAME", "test-bucket")
+
+    client = Mock()
+    client.download_file.side_effect = create_client_error("AccessDenied")
+
+    storage = S3Storage(client=client)
 
     with pytest.raises(RuntimeError, match="S3 download failed"):
-        storage.download_file("sample.txt", str(download_file))
-
-
-def test_object_not_found(monkeypatch, tmp_path):
-    monkeypatch.setenv("S3_BUCKET_NAME", "test-bucket")
-    monkeypatch.setenv("AWS_REGION", "ap-south-1")
-
-    storage = S3Storage()
-
-    download_file = tmp_path / "downloaded.txt"
-
-    def object_not_found(*args):
-        raise ClientError(
-            {
-                "Error": {
-                    "Code": "NoSuchKey",
-                    "Message": "The specified key does not exist.",
-                }
-            },
-            "DownloadFile",
+        storage.download_file(
+            "media/test.mp4",
+            "downloaded.mp4",
         )
 
-    storage.client.download_file = object_not_found
 
-    with pytest.raises(FileNotFoundError, match="S3 object not found"):
-        storage.download_file("missing.txt", str(download_file))
+def test_object_not_found(monkeypatch):
+    monkeypatch.setenv("S3_BUCKET_NAME", "test-bucket")
+
+    client = Mock()
+    client.download_file.side_effect = create_client_error("404")
+
+    storage = S3Storage(client=client)
+
+    with pytest.raises(
+        FileNotFoundError,
+        match="S3 object not found",
+    ):
+        storage.download_file(
+            "missing.mp4",
+            "downloaded.mp4",
+        )
+
+
+def test_object_exists(monkeypatch):
+    monkeypatch.setenv("S3_BUCKET_NAME", "test-bucket")
+
+    client = Mock()
+    client.head_object.return_value = {}
+
+    storage = S3Storage(client=client)
+
+    result = storage.object_exists("media/test.mp4")
+
+    assert result is True
+
+    client.head_object.assert_called_once_with(
+        Bucket="test-bucket",
+        Key="media/test.mp4",
+    )
+
+
+def test_object_does_not_exist(monkeypatch):
+    monkeypatch.setenv("S3_BUCKET_NAME", "test-bucket")
+
+    client = Mock()
+    client.head_object.side_effect = create_client_error("404")
+
+    storage = S3Storage(client=client)
+
+    result = storage.object_exists("media/missing.mp4")
+
+    assert result is False
+
+
+def test_object_exists_other_error(monkeypatch):
+    monkeypatch.setenv("S3_BUCKET_NAME", "test-bucket")
+
+    client = Mock()
+    client.head_object.side_effect = create_client_error("AccessDenied")
+
+    storage = S3Storage(client=client)
+
+    with pytest.raises(
+        RuntimeError,
+        match="S3 object existence check failed",
+    ):
+        storage.object_exists("media/test.mp4")
