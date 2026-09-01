@@ -78,3 +78,19 @@ def resize_image(
         raise ValueError("Width and height must be greater than zero.")
 
     return image.resize((width, height))
+
+def compress_image(
+    image: Image.Image,
+    output_path: str,
+    quality: int = 85,
+) -> None:
+    """Compress and save an image to the specified output path."""
+    if not 1 <= quality <= 100:
+        raise ValueError("Quality must be between 1 and 100.")
+
+    image.save(
+        output_path,
+        format=image.format or "JPEG",
+        optimize=True,
+        quality=quality,
+    )
