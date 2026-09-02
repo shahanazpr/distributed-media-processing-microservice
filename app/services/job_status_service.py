@@ -53,3 +53,30 @@ def get_job(job_id: str) -> Optional[dict]:
     if raw is None:
         return None
     return json.loads(raw)
+
+def update_job_status(
+    job_id: str,
+    status: str,
+    error: Optional[str] = None,
+    output: Optional[dict] = None,
+) -> dict:
+    """Update an existing job's status and optional error/output info."""
+    job_data = get_job(job_id)
+    if job_data is None:
+        raise JobStatusError(f"Job {job_id} not found")
+
+    job_data["status"] = status
+    job_data["updated_at"] = _now()
+
+    if error is not None:
+        job_data["error"] = error
+    if output is not None:
+        job_data["output"] = output
+
+    try:
+        client = get_redis_client()
+        client.set(_job_key(job_id), json.dumps(job_data))
+    except RedisError as e:
+        raise JobStatusError(f"Failed to update job {job_id}: {e}") from e
+
+    return job_data
