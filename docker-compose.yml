@@ -1,4 +1,20 @@
 services:
+  api:
+    build: .
+    container_name: media-processing-api
+    ports:
+      - "8000:8000"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: guest
+    depends_on:
+      - redis
+      - rabbitmq
+
   redis:
     image: redis:7-alpine
     ports:
