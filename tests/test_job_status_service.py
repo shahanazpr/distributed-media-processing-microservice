@@ -1,6 +1,7 @@
 import json
 import pytest
 from unittest.mock import MagicMock, patch
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.services import job_status_service as svc
 
@@ -74,3 +75,9 @@ def test_update_job_not_found_raises(mock_redis):
     mock_redis.get.return_value = None
     with pytest.raises(svc.JobStatusError):
         svc.update_job_status("missing-job", "PROCESSING")
+
+        
+def test_create_job_redis_down(mock_redis):
+    mock_redis.set.side_effect = RedisConnectionError("Connection refused")
+    with pytest.raises(svc.JobStatusError):
+        svc.create_job("job-1", "image.jpg", "resize")
