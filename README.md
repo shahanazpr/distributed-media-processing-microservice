@@ -282,6 +282,16 @@ Copy-Item .env.example .env
 
 Do not commit the `.env` file — it's gitignored.
 
+## Running RabbitMQ Locally
+
+Start RabbitMQ (with management UI) via Docker:
+
+```powershell
+docker run -d --name rabbitmq-local -p 5672:5672 -p 15672:15672 rabbitmq:3-management
+```
+
+The management dashboard is available at `http://localhost:15672` (default login: guest/guest), where you can inspect the `media_processing_queue` and see messages as they're published.
+
 ## Running the FastAPI Application
 
 Start the development server with:
