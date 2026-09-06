@@ -137,3 +137,38 @@ def test_process_creates_both_outputs(tmp_path, monkeypatch):
 
     assert (output_dir / "optimized.mp4").exists()
     assert (output_dir / "thumbnail.jpg").exists()
+
+
+def test_process_without_output_dir(tmp_path, monkeypatch):
+    processor = FFmpegProcessor()
+
+    input_file = tmp_path / "input.mp4"
+    input_file.write_bytes(b"fake video")
+
+    def fake_run(command, capture_output, text):
+        output_file = Path(command[-1])
+        output_file.write_bytes(b"processed")
+
+        class Result:
+            returncode = 0
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(
+        "app.processing.ffmpeg.subprocess.run",
+        fake_run,
+    )
+
+    result = processor.process(str(input_file))
+
+    video_path = Path(result["video"])
+    thumbnail_path = Path(result["thumbnail"])
+
+    assert video_path.name == "optimized.mp4"
+    assert thumbnail_path.name == "thumbnail.jpg"
+
+    assert video_path.exists()
+    assert thumbnail_path.exists()
+
+    assert video_path.parent == thumbnail_path.parent

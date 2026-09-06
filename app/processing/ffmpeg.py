@@ -154,54 +154,40 @@ class FFmpegProcessor:
             thumbnail.jpg
 
         If output_dir is not supplied, a temporary directory is created.
+        The caller is responsible for cleaning up the temporary directory.
         """
 
-        if not Path(input_path).exists():
+        input_file = Path(input_path)
+
+        if not input_file.exists():
             raise FileNotFoundError(
-                f"Input video not found: {input_path}"
+                f"Input video not found: {input_file}"
             )
 
         if output_dir is not None:
             output_directory = Path(output_dir)
             output_directory.mkdir(parents=True, exist_ok=True)
-
-            optimized_path = output_directory / "optimized.mp4"
-            thumbnail_path = output_directory / "thumbnail.jpg"
-
-            self.process_video(
-                input_path,
-                str(optimized_path),
-                resolution,
+        else:
+            temp_dir = tempfile.mkdtemp(
+                prefix="ffmpeg_processing_"
             )
+            output_directory = Path(temp_dir)
 
-            self.extract_thumbnail(
-                input_path,
-                str(thumbnail_path),
-            )
+        optimized_path = output_directory / "optimized.mp4"
+        thumbnail_path = output_directory / "thumbnail.jpg"
 
-            return {
-                "video": str(optimized_path),
-                "thumbnail": str(thumbnail_path),
-            }
+        self.process_video(
+            str(input_file),
+            str(optimized_path),
+            resolution,
+        )
 
-        with tempfile.TemporaryDirectory(
-            prefix="ffmpeg_processing_"
-        ) as temp_dir:
-            optimized_path = Path(temp_dir) / "optimized.mp4"
-            thumbnail_path = Path(temp_dir) / "thumbnail.jpg"
+        self.extract_thumbnail(
+            str(input_file),
+            str(thumbnail_path),
+        )
 
-            self.process_video(
-                input_path,
-                str(optimized_path),
-                resolution,
-            )
-
-            self.extract_thumbnail(
-                input_path,
-                str(thumbnail_path),
-            )
-
-            return {
-                "video": str(optimized_path),
-                "thumbnail": str(thumbnail_path),
-            }
+        return {
+            "video": str(optimized_path),
+            "thumbnail": str(thumbnail_path),
+        }
