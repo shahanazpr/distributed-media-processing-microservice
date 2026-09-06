@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 from app.api.jobs import router as jobs_router
 
+from app.api.jobs import router as jobs_router
+
+
 app = FastAPI(
     title="Distributed Media Processing Microservice",
     description="Event-driven microservice for asynchronous media processing.",
@@ -14,5 +17,4 @@ app.include_router(jobs_router)
 async def health_check():
     return {
         "status": "healthy",
-        "service": "media-processing-microservice"
     }
