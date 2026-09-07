@@ -1,407 +1,432 @@
-# Distributed Media Processing Microservice
+Distributed Media Processing Microservice
 
-An event-driven backend microservice designed to handle heavy, asynchronous media-processing workloads.
+An event-driven backend microservice for handling heavy, asynchronous
+media-processing workloads.
 
-The service is responsible for accepting media-processing jobs from a main web application, processing media asynchronously using Celery workers, and storing optimized media assets in cloud storage.
+Project Overview
 
-## Project Overview
+This microservice offloads CPU-intensive media-processing operations
+from the primary web application. Clients submit jobs through FastAPI,
+media is stored in S3, and processing is performed asynchronously by
+Celery workers through RabbitMQ. Redis tracks job status, while
+processed assets are stored in S3 and delivered through CloudFront.
 
-The microservice offloads CPU-intensive media-processing tasks from the primary web application.
+Architecture
 
-Instead of making the main application wait for operations such as image resizing or video transcoding, the application submits a job to this service. The job is placed into an asynchronous processing pipeline and handled by background workers.
+Client / Main Web Application | v FastAPI | +—-+—————-+ | | v v Redis
+Pre-signed S3 URL Job Status | v S3 | v RabbitMQ | v Celery Workers |
++———+———+ | | v v Pillow FFmpeg Images Videos | | +———+———+ | v
+Watermark | v S3 Output | v CloudFront CDN | v Client
 
-### Main Processing Flow
+Prometheus monitors application, queue, worker, processing, and resource
+metrics.
 
-Client / Main Web Application
-        |
-        v
-     FastAPI
-        |
-        +------> Redis (Job Status)
-        |
-        v
-    RabbitMQ
-        |
-        v
-   Celery Worker
-        |
-        +------> Pillow (Images)
-        |
-        +------> FFmpeg (Videos)
-        |
-        v
-      AWS S3
-        |
-        v
-   Optimized Media
+Key Features
 
-## Key Features
+-   FastAPI REST API for job submission and status tracking
+-   Pre-signed S3 upload URLs
+-   Redis-backed job status tracking
+-   RabbitMQ message broker
+-   Celery asynchronous workers
+-   Pillow image processing
+-   FFmpeg video processing
+-   Image crop, resize, compression, and watermarking
+-   Video thumbnail extraction and MP4/H.264 transcoding
+-   Video watermarking
+-   S3 input and output storage
+-   CloudFront CDN delivery
+-   Retry and failure handling
+-   Multiple Celery workers
+-   Docker Compose deployment
+-   Prometheus monitoring
+-   Pytest automated testing
+-   GitHub Actions CI
+-   Load and performance testing
 
-- FastAPI REST API for submitting and tracking processing jobs
-- Asynchronous background processing with Celery
-- RabbitMQ message broker for distributing jobs
-- Redis for job-status tracking and caching
-- AWS S3 for media storage
-- Pillow for image processing
-- FFmpeg for video processing
-- Docker-based deployment
-- Prometheus metrics and monitoring
-- Retry and error-handling mechanisms for asynchronous jobs
-- Scalable worker-based architecture
+Technology Stack
 
-## Technology Stack
+Programming Language: Python API Framework: FastAPI Task Queue: Celery
+Message Broker: RabbitMQ Job Status / Cache: Redis Image Processing:
+Pillow Video Processing: FFmpeg / FFmpeg-python Cloud Storage: AWS S3
+AWS SDK: Boto3 CDN: AWS CloudFront Containerization: Docker / Docker
+Compose Monitoring: Prometheus Testing: Pytest CI: GitHub Actions
 
-| Component | Technology |
-|---|---|
-| Programming Language | Python |
-| API Framework | FastAPI |
-| Task Queue | Celery |
-| Message Broker | RabbitMQ |
-| Cache / Job Status | Redis |
-| Image Processing | Pillow |
-| Video Processing | FFmpeg / FFmpeg-python |
-| Cloud Storage | AWS S3 |
-| AWS SDK | Boto3 |
-| Containerization | Docker / Docker Compose |
-| Monitoring | Prometheus |
-| Testing | Pytest |
+End-to-End Workflow
 
-## Project Structure
+1.  Client requests a processing job.
+2.  FastAPI validates the request and creates a unique job ID.
+3.  FastAPI generates a pre-signed S3 upload URL.
+4.  Client uploads the original media directly to S3.
+5.  The processing task is sent to Celery through RabbitMQ.
+6.  Redis records the job as PENDING.
+7.  A Celery worker receives the task.
+8.  The worker changes the job to PROCESSING.
+9.  The worker downloads the input media from S3.
+10. Pillow or FFmpeg processes the media.
+11. Watermarking is applied when configured.
+12. Processed files are uploaded to S3.
+13. Redis is updated with COMPLETED or FAILED status.
+14. The job result contains processed output information and, when
+    configured, a CloudFront URL.
+15. The client retrieves the result through the job-status API.
 
-```text
-distributed-media-processing-microservice/
-│
-├── app/
-│   ├── __init__.py
-│   ├── main.py
-│   │
-│   ├── api/
-│   │   ├── __init__.py
-│   │   └── jobs.py
-│   │
-│   ├── core/
-│   │   ├── __init__.py
-│   │   └── logging.py
-│   │
-│   ├── media/
-│   ├── services/
-│   ├── storage/
-│   └── tasks/
-│
-├── tests/
-│   ├── __init__.py
-│   └── test_health.py
-│
-├── .env.example
-├── .gitignore
-├── requirements.txt
-├── docker-compose.yml
-└── README.md
-```
+Job States
 
-The exact contents of the directories will grow as the project implementation progresses.
+PENDING PROCESSING COMPLETED FAILED
 
-## Current API
+Failure flow:
 
-### Health Check
+PENDING -> PROCESSING -> RETRY -> PROCESSING -> FAILED
 
-```http
+Transient failures are retried according to the configured Celery retry
+policy.
+
+API
+
+Health Check
+
 GET /health
-```
 
 Example response:
 
-```json
-{
-  "status": "healthy",
-  "service": "media-processing-microservice"
-}
-```
+{ “status”: “healthy”, “service”: “media-processing-microservice” }
 
-### Create Processing Job
+Create Processing Job
 
-```http
 POST /jobs
-```
 
-Current request format:
+Example request:
 
-```json
-{
-  "filename": "image.jpg",
-  "operation": "resize"
-}
-```
+{ “filename”: “image.jpg”, “operation”: “resize” }
 
-Current response format:
+The endpoint returns a job ID and pre-signed S3 upload URL. The final
+response fields depend on the implemented processing configuration.
 
-```json
-{
-  "job_id": "generated-uuid",
-  "status": "queued",
-  "filename": "image.jpg",
-  "operation": "resize"
-}
-```
+Get Job Status
 
-### Get Job Status
-
-```http
 GET /jobs/{job_id}
-```
 
-The job-status endpoint is being developed toward Redis-backed status tracking as the asynchronous processing pipeline is integrated.
+The response contains the current status and, after successful
+processing, output information such as S3 object keys and CloudFront
+URLs.
 
-## Media Processing
+API Documentation
 
-### Images
+When running locally:
 
-Image processing will use Pillow for operations such as:
+http://127.0.0.1:8000/docs http://127.0.0.1:8000/openapi.json
 
-- Cropping
-- Resizing
-- Compression
-- Watermarking
+Image Processing
 
-### Videos
+Pillow is used for:
 
-Video processing will use FFmpeg for operations such as:
+-   Cropping
+-   Resizing
+-   Compression
+-   JPEG output generation
+-   Watermarking
 
-- Thumbnail extraction
-- Video transcoding
-- MP4 output
-- H.264 encoding
-- Video optimization
+Video Processing
 
-## Storage
+FFmpeg is used for:
 
-AWS S3 is used as the media storage layer.
+-   Thumbnail extraction
+-   Video transcoding
+-   MP4 output
+-   H.264 encoding
+-   Video optimization
+-   Watermarking
 
-The storage service provides functionality for:
+Storage
 
-- Uploading files
-- Downloading files
-- Handling missing objects
-- Handling S3 errors
-- Generating presigned URLs as the API/storage integration is completed
+AWS S3 is used for original and processed media.
 
-AWS configuration must be provided through environment variables. Credentials must never be hardcoded or committed to the repository.
+Example object layout:
 
-## Asynchronous Processing Architecture
+uploads//original-file.jpg outputs//processed-file.jpg
+outputs//optimized.mp4 outputs//thumbnail.jpg
 
-The intended processing pipeline is:
+The storage service supports uploads, downloads, object existence
+checks, and pre-signed upload URL generation.
 
-1. Client submits a media-processing job.
-2. FastAPI creates the job.
-3. Job status is stored in Redis.
-4. The job is sent to the RabbitMQ queue through Celery.
-5. A Celery worker receives the job.
-6. The worker downloads the media from S3.
-7. Pillow or FFmpeg processes the media.
-8. The optimized asset is uploaded back to S3.
-9. Redis is updated with the final job status.
-10. The client can retrieve the job status and result.
+Never hardcode or commit AWS credentials.
 
-## Job States
+CloudFront CDN
 
-Jobs will use the following states:
+Processed media is stored in S3 and delivered through CloudFront.
 
-```text
-PENDING
-PROCESSING
-COMPLETED
-FAILED
-```
+S3 Output -> CloudFront -> Client
 
-## Error Handling and Retries
+The completed job can return a CDN URL for the processed asset when
+CloudFront is configured.
 
-The system is designed to handle failures without blocking the main web application.
+Asynchronous Processing
 
-Expected failure scenarios include:
+Celery executes processing outside the FastAPI request-response cycle.
 
-- S3 connection failures
-- Missing S3 objects
-- Network timeouts
-- Media-processing failures
-- RabbitMQ connection failures
-- Worker failures
+RabbitMQ distributes tasks to workers.
 
-Celery retry mechanisms will be used for appropriate transient failures such as network-related errors.
+Multiple workers can be started to process jobs concurrently.
 
-## Development Setup
+Example local worker command:
 
-### 1. Clone the repository
+celery -A app.tasks.celery_app.celery_app worker –loglevel=info
+–pool=solo
 
-```bash
-git clone https://github.com/shahanazpr/distributed-media-processing-microservice.git
+Error Handling and Retries
+
+The system handles:
+
+-   S3 connection and transfer failures
+-   Missing S3 objects
+-   Network timeouts
+-   Invalid media
+-   Corrupted images or videos
+-   Pillow failures
+-   FFmpeg failures
+-   RabbitMQ/Celery failures
+-   Worker failures
+
+Transient failures are retried. Jobs that exceed the configured retry
+limit are marked FAILED and the error is stored.
+
+Monitoring
+
+Prometheus provides operational metrics such as:
+
+-   Total jobs
+-   Completed jobs
+-   Failed jobs
+-   Processing duration
+-   Queue activity
+-   Worker activity
+-   CPU usage
+-   Memory usage
+
+Metrics endpoint:
+
+GET /metrics
+
+Docker Compose
+
+The final containerized environment includes:
+
+-   FastAPI
+-   Celery worker
+-   RabbitMQ
+-   Redis
+-   Prometheus
+
+An S3-compatible service such as MinIO may be used for local development
+and integration testing.
+
+Start:
+
+docker compose up –build
+
+Stop:
+
+docker compose down
+
+Check services:
+
+docker compose ps
+
+View logs:
+
+docker compose logs -f
+
+Local Development
+
+Clone:
+
+git clone
+https://github.com/shahanazpr/distributed-media-processing-microservice.git
 cd distributed-media-processing-microservice
-```
 
-### 2. Create a virtual environment
+Create a virtual environment on Windows:
 
-Windows PowerShell:
+python -m venv .venv .venv.ps1
 
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-```
+Linux/macOS:
 
-Linux / macOS:
+python3 -m venv .venv source .venv/bin/activate
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
+Install dependencies:
 
-### 3. Install dependencies
-
-```bash
 pip install -r requirements.txt
-```
 
-### 4. Configure environment variables
+Configure environment variables using .env.example.
 
-Copy `.env.example` to `.env` and fill in your local values:
+Never commit .env or real credentials.
 
-```powershell
-Copy-Item .env.example .env
-```
+Environment Variables
 
-| Variable | Description | Default |
-|---|---|---|
-| APP_ENV | development/production | development |
-| AWS_ACCESS_KEY_ID | AWS IAM access key | — |
-| AWS_SECRET_ACCESS_KEY | AWS IAM secret key | — |
-| AWS_REGION | AWS region | ap-south-1 |
-| S3_INPUT_BUCKET | Bucket for raw uploads | — |
-| S3_OUTPUT_BUCKET | Bucket for processed media | — |
-| REDIS_HOST | Redis server host | localhost |
-| REDIS_PORT | Redis server port | 6379 |
-| RABBITMQ_HOST | RabbitMQ server host | localhost |
-| RABBITMQ_PORT | RabbitMQ server port | 5672 |
+The final .env.example should document every variable actually used by
+the implementation.
 
-Do not commit the `.env` file — it's gitignored.
+Typical configuration includes:
 
-## Running RabbitMQ Locally
+APP_ENV AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION
+S3_BUCKET_NAME or input/output bucket variables S3_ENDPOINT_URL for
+local S3-compatible storage REDIS_URL or Redis host/port variables
+CELERY_BROKER_URL RABBITMQ_HOST RABBITMQ_PORT CLOUDFRONT_DOMAIN
+PROMETHEUS_PORT
 
-Start RabbitMQ (with management UI) via Docker:
+Use the exact variable names implemented in the final code.
 
-```powershell
-docker run -d --name rabbitmq-local -p 5672:5672 -p 15672:15672 rabbitmq:3-management
-```
+Running the Application
 
-The management dashboard is available at `http://localhost:15672` (default login: guest/guest), where you can inspect the `media_processing_queue` and see messages as they're published.
+FastAPI:
 
-## Running the FastAPI Application
+uvicorn app.main:app –reload
 
-Start the development server with:
+Application:
 
-```bash
-uvicorn app.main:app --reload
-```
-
-The API will be available at:
-
-```text
 http://127.0.0.1:8000
-```
 
-Interactive API documentation:
+API documentation:
 
-```text
 http://127.0.0.1:8000/docs
-```
 
-OpenAPI specification:
+Celery:
 
-```text
-http://127.0.0.1:8000/openapi.json
-```
+celery -A app.tasks.celery_app.celery_app worker –loglevel=info
+–pool=solo
 
-## Running Tests
+Testing
 
-Run the test suite with:
+Run all tests:
 
-```bash
 pytest
-```
 
-The project uses Pytest for automated testing of the application and storage components.
+Verbose:
 
-## Docker
+pytest -v
 
-The completed system is intended to run using Docker Compose with services including:
+Testing should cover:
 
-```text
-FastAPI
-Celery Worker
-RabbitMQ
-Redis
-```
+-   FastAPI endpoints
+-   Job creation and status retrieval
+-   Redis job storage
+-   S3 operations
+-   Pre-signed URLs
+-   Pillow processing
+-   FFmpeg processing
+-   Watermarking
+-   Celery tasks
+-   Retry and failure behavior
+-   S3 input/output workflow
+-   End-to-end processing
 
-The worker container will also include the required media-processing dependencies, including FFmpeg.
+Continuous Integration
 
-The Docker setup will be finalized as infrastructure work progresses.
+GitHub Actions runs automated validation on pushes and pull requests.
 
-## Monitoring
+The CI workflow should install dependencies and run the automated test
+suite. Pull requests should be reviewed and merged only after required
+checks pass.
 
-Prometheus metrics will be added to monitor the asynchronous processing system.
+Load Testing and Performance
 
-Planned metrics include:
+The final system should be tested with:
 
-- Number of jobs
-- Successful jobs
-- Failed jobs
-- Processing duration
-- Queue activity
-- Worker activity
+-   Multiple simultaneous job submissions
+-   Multiple image jobs
+-   Multiple video jobs
+-   Mixed image/video workloads
+-   Multiple Celery workers
+-   Failed jobs
+-   Retry scenarios
+-   Queue behavior under load
+-   S3 operations under load
 
-## Git Workflow
+Measure:
 
-Development is organized using feature branches.
+-   API response time
+-   Queue waiting time
+-   Job processing time
+-   Worker CPU usage
+-   Memory usage
+-   S3 download/upload time
+-   Image processing time
+-   Video processing time
 
-Example:
+Performance optimization should focus on worker concurrency,
+temporary-file management, memory usage, media encoding settings, queue
+behavior, and unnecessary data copies.
 
-```text
-main
-  |
-  +-- feature/job-api
-  +-- feature/s3-storage-service
-  +-- feature/configuration
-  +-- feature/s3-tests
-  +-- feature/architecture-docs
-```
+Security
 
-Changes should be developed on feature branches and reviewed through Pull Requests before being merged into the main project branch.
+-   Never commit .env files or credentials.
+-   Use IAM least-privilege permissions.
+-   Use pre-signed URLs for client uploads.
+-   Validate filenames and media inputs.
+-   Use unique object keys.
+-   Validate media before processing.
+-   Use secure production credentials and secret management.
+-   Do not use development credentials in production.
 
-## Team Development
+Git Workflow
 
-This project is being developed as a team project. Work is divided into GitHub Issues so that API development, cloud storage, configuration, testing, media processing, infrastructure, and documentation can progress in parallel.
+Use feature branches for development.
 
-## Project Goals
+Recommended workflow:
 
-The completed microservice should:
+1.  Create a feature branch.
+2.  Implement the assigned issue.
+3.  Add or update tests.
+4.  Run pytest.
+5.  Push the branch.
+6.  Open a Pull Request.
+7.  Review the Pull Request.
+8.  Ensure CI checks pass.
+9.  Merge into the integration branch.
+10. Run integration tests.
 
-- Keep the primary web application responsive
-- Process CPU-intensive media tasks asynchronously
-- Support scalable background workers
-- Reliably store input and output media
-- Track job status
-- Handle transient failures and retries
-- Provide monitoring and operational visibility
-- Support containerized deployment
+Final Validation Checklist
 
-## Project Status
+[ ] FastAPI starts successfully [ ] Health endpoint works [ ] Job
+creation works [ ] Pre-signed S3 upload works [ ] Redis job status works
+[ ] RabbitMQ receives tasks [ ] Celery workers process tasks [ ] Pillow
+processes images [ ] Images can be cropped, resized, and compressed [ ]
+FFmpeg processes videos [ ] Video thumbnails are generated [ ] Videos
+are transcoded to MP4/H.264 [ ] Image watermarking works [ ] Video
+watermarking works [ ] Outputs are uploaded to S3 [ ] CloudFront
+delivers processed assets [ ] Job statuses transition correctly [ ]
+Retry behavior works [ ] Failed jobs are recorded [ ] Multiple workers
+process jobs concurrently [ ] Prometheus metrics are available [ ]
+Docker Compose starts the system [ ] Automated tests pass [ ] GitHub
+Actions CI passes [ ] Load testing is completed [ ] Memory usage is
+reviewed [ ] Performance bottlenecks are addressed [ ] Deployment
+documentation is complete [ ] Troubleshooting documentation is complete
+[ ] Final end-to-end demonstration succeeds
 
-Development is currently in progress.
+Deployment
 
-Completed foundation work includes:
+The production deployment should include:
 
-- FastAPI application scaffolding
-- Health-check endpoint
-- Initial Jobs API
-- Basic application structure
-- Initial automated testing
-- S3 storage service implementation
+-   FastAPI containers
+-   Celery worker containers
+-   RabbitMQ or a managed message broker
+-   Redis or a managed Redis service
+-   AWS S3
+-   AWS CloudFront
+-   Prometheus monitoring
+-   Secure environment configuration
+-   Appropriate worker concurrency
+-   Centralized logging and operational monitoring
 
-The remaining components will be integrated incrementally as the team completes the assigned development issues.
+The number of Celery workers can be increased according to workload.
+
+Project Completion Criteria
+
+The project is complete when all assigned implementation issues are
+finished, the full media-processing workflow works end-to-end, automated
+and integration tests pass, retries and failures are validated,
+monitoring is operational, Docker deployment works, load/performance
+testing is completed, and deployment documentation is finalized.
+
+Repository
+
+https://github.com/shahanazpr/distributed-media-processing-microservice
