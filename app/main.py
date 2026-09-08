@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 app = FastAPI(
     title="Distributed Media Processing Microservice",
@@ -13,3 +14,7 @@ async def health_check():
         "status": "healthy",
         "service": "media-processing-microservice"
     }
+
+@app.get("/metrics")
+def metrics():
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
