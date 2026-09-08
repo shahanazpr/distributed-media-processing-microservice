@@ -7,6 +7,8 @@ from pydantic import BaseModel
 
 from app.services.job_store import JobStore
 from app.storage.s3 import S3Storage
+from app.tasks.media_tasks import process_media
+
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
@@ -35,6 +37,8 @@ async def create_job(request: JobRequest):
         object_key=object_key,
         status="pending",
     )
+
+    process_media.delay(job_id)
 
     return {
         "job_id": job_id,
