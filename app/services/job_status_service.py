@@ -4,6 +4,7 @@ from typing import Optional
 from redis.exceptions import RedisError
 
 from app.core.redis_client import get_redis_client
+from app.core.metrics import JOBS_TOTAL, JOBS_SUCCEEDED, JOBS_FAILED, JOB_STATUS_COUNT
 
 JOB_KEY_PREFIX = "job:"
 
@@ -19,7 +20,6 @@ def _job_key(job_id: str) -> str:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
-
 
 def create_job(job_id: str, filename: str, operation: str) -> dict:
     """Create a new job record with PENDING status."""
@@ -38,6 +38,9 @@ def create_job(job_id: str, filename: str, operation: str) -> dict:
         client.set(_job_key(job_id), json.dumps(job_data))
     except RedisError as e:
         raise JobStatusError(f"Failed to create job {job_id}: {e}") from e
+
+    JOBS_TOTAL.inc()
+    JOB_STATUS_COUNT.labels(status="PENDING").inc()
 
     return job_data
 
@@ -78,5 +81,11 @@ def update_job_status(
         client.set(_job_key(job_id), json.dumps(job_data))
     except RedisError as e:
         raise JobStatusError(f"Failed to update job {job_id}: {e}") from e
+
+    JOB_STATUS_COUNT.labels(status=status).inc()
+    if status == "COMPLETED":
+        JOBS_SUCCEEDED.inc()
+    elif status == "FAILED":
+        JOBS_FAILED.inc()
 
     return job_data
