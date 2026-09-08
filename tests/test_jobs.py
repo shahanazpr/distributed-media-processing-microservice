@@ -11,7 +11,11 @@ client = TestClient(app)
 @patch("app.api.jobs.process_media")
 @patch("app.api.jobs.JobStore")
 @patch("app.api.jobs.S3Storage")
-def test_create_job(mock_storage, mock_job_store, mock_process_media):
+def test_create_job_does_not_start_processing(
+    mock_storage,
+    mock_job_store,
+    mock_process_media,
+):
     mock_storage.return_value.generate_presigned_upload_url.return_value = (
         "https://example.com/presigned-url"
     )
@@ -48,7 +52,7 @@ def test_create_job(mock_storage, mock_job_store, mock_process_media):
         status="pending",
     )
 
-    mock_process_media.delay.assert_called_once_with(data["job_id"])
+    mock_process_media.delay.assert_not_called()
 
 
 @patch("app.api.jobs.process_media")
@@ -88,10 +92,103 @@ def test_create_job_generates_unique_ids(
     assert data1["job_id"] != data2["job_id"]
     assert data1["object_key"] != data2["object_key"]
 
-    assert mock_process_media.delay.call_count == 2
+    mock_process_media.delay.assert_not_called()
 
-    mock_process_media.delay.assert_any_call(data1["job_id"])
-    mock_process_media.delay.assert_any_call(data2["job_id"])
+
+@patch("app.api.jobs.process_media")
+@patch("app.api.jobs.S3Storage")
+@patch("app.api.jobs.JobStore")
+def test_confirm_upload_starts_processing(
+    mock_job_store,
+    mock_storage,
+    mock_process_media,
+):
+    mock_job_store.return_value.get_job.return_value = {
+        "job_id": "test-job-id",
+        "status": "pending",
+        "filename": "image.jpg",
+        "operation": "resize",
+        "object_key": "uploads/test-job-id/image.jpg",
+    }
+
+    mock_storage.return_value.object_exists.return_value = True
+
+    response = client.post("/jobs/test-job-id/confirm-upload")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["job_id"] == "test-job-id"
+    assert data["status"] == "processing"
+
+    mock_storage.return_value.object_exists.assert_called_once_with(
+        "uploads/test-job-id/image.jpg"
+    )
+
+    mock_process_media.delay.assert_called_once_with("test-job-id")
+
+
+@patch("app.api.jobs.process_media")
+@patch("app.api.jobs.S3Storage")
+@patch("app.api.jobs.JobStore")
+def test_confirm_upload_does_not_start_processing_before_upload(
+    mock_job_store,
+    mock_storage,
+    mock_process_media,
+):
+    mock_job_store.return_value.get_job.return_value = {
+        "job_id": "test-job-id",
+        "status": "pending",
+        "filename": "image.jpg",
+        "operation": "resize",
+        "object_key": "uploads/test-job-id/image.jpg",
+    }
+
+    mock_storage.return_value.object_exists.return_value = False
+
+    response = client.post("/jobs/test-job-id/confirm-upload")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Upload not completed"
+
+    mock_storage.return_value.object_exists.assert_called_once_with(
+        "uploads/test-job-id/image.jpg"
+    )
+
+    mock_process_media.delay.assert_not_called()
+
+
+@patch("app.api.jobs.JobStore")
+def test_confirm_upload_job_not_found(mock_job_store):
+    mock_job_store.return_value.get_job.return_value = None
+
+    response = client.post("/jobs/non-existent/confirm-upload")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Job not found"
+
+
+@patch("app.api.jobs.JobStore")
+@patch("app.api.jobs.process_media")
+def test_confirm_upload_only_for_pending_job(
+    mock_process_media,
+    mock_job_store,
+):
+    mock_job_store.return_value.get_job.return_value = {
+        "job_id": "test-job-id",
+        "status": "completed",
+        "filename": "image.jpg",
+        "operation": "resize",
+        "object_key": "uploads/test-job-id/image.jpg",
+    }
+
+    response = client.post("/jobs/test-job-id/confirm-upload")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Job is not pending"
+
+    mock_process_media.delay.assert_not_called()
 
 
 @patch("app.api.jobs.JobStore")

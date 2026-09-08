@@ -1,6 +1,13 @@
 import tempfile
 from pathlib import Path
 
+from botocore.exceptions import (
+    ConnectionClosedError,
+    ConnectTimeoutError,
+    EndpointConnectionError,
+    ReadTimeoutError,
+)
+
 from app.processing.ffmpeg import FFmpegProcessor
 from app.processing.image import ImageProcessor
 from app.services.job_store import JobStore
@@ -11,10 +18,17 @@ from app.tasks.celery_app import celery_app
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 
+TRANSIENT_ERRORS = (
+    ConnectionClosedError,
+    ConnectTimeoutError,
+    EndpointConnectionError,
+    ReadTimeoutError,
+)
+
 
 @celery_app.task(
     bind=True,
-    autoretry_for=(Exception,),
+    autoretry_for=TRANSIENT_ERRORS,
     retry_backoff=True,
     retry_kwargs={"max_retries": 3},
 )
@@ -30,8 +44,9 @@ def process_media(self, job_id: str) -> dict:
         -> Upload output to S3
         -> Redis COMPLETED
 
-    Temporary failures are retried by Celery.
-    The job is marked FAILED after the final retry.
+    Only transient S3/network connection errors are
+    automatically retried by Celery.
+    Permanent processing errors are marked as FAILED.
     """
 
     job_store = JobStore()
@@ -134,14 +149,24 @@ def process_media(self, job_id: str) -> dict:
             "output": output,
         }
 
-    except Exception as exc:
-        # When Celery has exhausted its automatic retries,
-        # mark the job as failed before propagating the error.
+    except TRANSIENT_ERRORS as exc:
+        # Celery will automatically retry these errors.
+        # Mark the job as failed only after the final retry.
         if self.request.retries >= 3:
             job_store.update_job(
                 job_id,
                 status="failed",
                 error=str(exc),
             )
+
+        raise
+
+    except Exception as exc:
+        # Permanent errors should not be automatically retried.
+        job_store.update_job(
+            job_id,
+            status="failed",
+            error=str(exc),
+        )
 
         raise
