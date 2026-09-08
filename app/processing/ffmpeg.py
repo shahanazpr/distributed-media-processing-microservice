@@ -89,6 +89,78 @@ class FFmpegProcessor:
 
         return str(output_file)
 
+    def apply_watermark(
+        self,
+        input_path: str,
+        output_path: str,
+        watermark_path: str,
+        position: str = "10:10",
+    ) -> str:
+        """
+        Apply an image watermark to a video.
+
+        Args:
+            input_path: Path to the input video.
+            output_path: Path for the watermarked video.
+            watermark_path: Path to the watermark image.
+            position: Watermark position in FFmpeg overlay format.
+
+        Returns:
+            Path to the watermarked video.
+
+        Raises:
+            FileNotFoundError: If the input video or watermark image does not exist.
+            RuntimeError: If FFmpeg processing fails.
+        """
+
+        input_file = Path(input_path)
+        output_file = Path(output_path)
+        watermark_file = Path(watermark_path)
+
+        if not input_file.exists():
+            raise FileNotFoundError(
+                f"Input video not found: {input_file}"
+            )
+
+        if not watermark_file.exists():
+            raise FileNotFoundError(
+                f"Watermark image not found: {watermark_file}"
+            )
+
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        command = [
+            self.ffmpeg_path,
+            "-i",
+            str(input_file),
+            "-i",
+            str(watermark_file),
+            "-filter_complex",
+            f"overlay={position}",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "23",
+            "-c:a",
+            "aac",
+            "-movflags",
+            "+faststart",
+            "-y",
+            str(output_file),
+        ]
+
+        self._run_ffmpeg(command)
+
+        if not output_file.exists():
+            raise RuntimeError(
+                "FFmpeg completed successfully but watermarked video "
+                "was not created."
+            )
+
+        return str(output_file)
+
     def extract_thumbnail(
         self,
         input_path: str,
