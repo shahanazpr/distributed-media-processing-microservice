@@ -36,18 +36,6 @@ class FFmpegProcessor:
     ) -> str:
         """
         Transcode a video to an optimized H.264 MP4 file.
-
-        Args:
-            input_path: Path to the input video.
-            output_path: Path for the processed MP4.
-            resolution: Output resolution in WIDTH:HEIGHT format.
-
-        Returns:
-            Path to the processed video.
-
-        Raises:
-            FileNotFoundError: If the input video does not exist.
-            RuntimeError: If FFmpeg processing fails.
         """
 
         input_file = Path(input_path)
@@ -95,17 +83,7 @@ class FFmpegProcessor:
         output_path: str,
         timestamp: str = "00:00:01",
     ) -> str:
-        """
-        Extract a JPEG thumbnail from a video.
-
-        Args:
-            input_path: Path to the input video.
-            output_path: Path for the thumbnail.
-            timestamp: Timestamp from which to extract the thumbnail.
-
-        Returns:
-            Path to the generated thumbnail.
-        """
+        """Extract a JPEG thumbnail from a video."""
 
         input_file = Path(input_path)
         output_file = Path(output_path)
@@ -154,7 +132,6 @@ class FFmpegProcessor:
             thumbnail.jpg
 
         If output_dir is not supplied, a temporary directory is created.
-        The caller is responsible for cleaning up the temporary directory.
         """
 
         input_file = Path(input_path)
@@ -167,27 +144,44 @@ class FFmpegProcessor:
         if output_dir is not None:
             output_directory = Path(output_dir)
             output_directory.mkdir(parents=True, exist_ok=True)
-        else:
-            temp_dir = tempfile.mkdtemp(
-                prefix="ffmpeg_processing_"
+
+            optimized_path = output_directory / "optimized.mp4"
+            thumbnail_path = output_directory / "thumbnail.jpg"
+
+            self.process_video(
+                str(input_file),
+                str(optimized_path),
+                resolution,
             )
-            output_directory = Path(temp_dir)
 
-        optimized_path = output_directory / "optimized.mp4"
-        thumbnail_path = output_directory / "thumbnail.jpg"
+            self.extract_thumbnail(
+                str(input_file),
+                str(thumbnail_path),
+            )
 
-        self.process_video(
-            str(input_file),
-            str(optimized_path),
-            resolution,
-        )
+            return {
+                "video": str(optimized_path),
+                "thumbnail": str(thumbnail_path),
+            }
 
-        self.extract_thumbnail(
-            str(input_file),
-            str(thumbnail_path),
-        )
+        with tempfile.TemporaryDirectory(
+            prefix="ffmpeg_processing_"
+        ) as temp_dir:
+            optimized_path = Path(temp_dir) / "optimized.mp4"
+            thumbnail_path = Path(temp_dir) / "thumbnail.jpg"
 
-        return {
-            "video": str(optimized_path),
-            "thumbnail": str(thumbnail_path),
-        }
+            self.process_video(
+                str(input_file),
+                str(optimized_path),
+                resolution,
+            )
+
+            self.extract_thumbnail(
+                str(input_file),
+                str(thumbnail_path),
+            )
+
+            return {
+                "video": str(optimized_path),
+                "thumbnail": str(thumbnail_path),
+            }
