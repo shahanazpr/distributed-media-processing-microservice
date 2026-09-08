@@ -16,13 +16,17 @@ def test_process_media_image_success(tmp_path, monkeypatch):
         "status": "pending",
     }
 
+    events = []
+
     class FakeJobStore:
         jobs = {job_id: job.copy()}
 
         def get_job(self, requested_job_id):
+            events.append(("get_job", requested_job_id))
             return self.jobs.get(requested_job_id)
 
         def update_status(self, requested_job_id, status):
+            events.append(("update_status", status))
             self.jobs[requested_job_id]["status"] = status
             return self.jobs[requested_job_id]
 
@@ -33,6 +37,8 @@ def test_process_media_image_success(tmp_path, monkeypatch):
             output=None,
             error=None,
         ):
+            events.append(("update_job", status))
+
             if status is not None:
                 self.jobs[requested_job_id]["status"] = status
 
@@ -46,14 +52,19 @@ def test_process_media_image_success(tmp_path, monkeypatch):
 
     class FakeS3Storage:
         def download_file(self, object_name, file_path):
+            events.append(("download", object_name))
+            assert object_name == job["object_key"]
             Path(file_path).write_bytes(b"fake image")
 
         def upload_file(self, file_path, object_name):
+            events.append(("upload", object_name))
             assert Path(file_path).exists()
             assert object_name.startswith(f"outputs/{job_id}/")
 
     class FakeImageProcessor:
         def process(self, input_path, output_path):
+            events.append(("process", Path(input_path).name))
+            assert Path(input_path).exists()
             Path(output_path).write_bytes(b"processed image")
             return output_path
 
@@ -80,6 +91,21 @@ def test_process_media_image_success(tmp_path, monkeypatch):
     assert FakeJobStore.jobs[job_id]["status"] == "completed"
     assert "output" in FakeJobStore.jobs[job_id]
 
+    event_names = [event[0] for event in events]
+
+    assert event_names == [
+        "get_job",
+        "update_status",
+        "download",
+        "process",
+        "upload",
+        "update_job",
+    ]
+
+    assert events[1] == ("update_status", "processing")
+    assert events[2] == ("download", job["object_key"])
+    assert events[4][0] == "upload"
+    assert events[5] == ("update_job", "completed")
 
 def test_process_media_video_success(tmp_path, monkeypatch):
     job_id = "test-video-job"
