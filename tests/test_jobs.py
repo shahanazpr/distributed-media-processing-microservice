@@ -4,12 +4,14 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 
+
 client = TestClient(app)
 
 
+@patch("app.api.jobs.process_media.delay")
 @patch("app.api.jobs.JobStore")
 @patch("app.api.jobs.S3Storage")
-def test_create_job(mock_storage, mock_job_store):
+def test_create_job(mock_storage, mock_job_store, mock_process):
     mock_storage.return_value.generate_presigned_upload_url.return_value = (
         "https://example.com/presigned-url"
     )
@@ -46,10 +48,17 @@ def test_create_job(mock_storage, mock_job_store):
         status="pending",
     )
 
+    mock_process.assert_called_once_with(data["job_id"])
 
+
+@patch("app.api.jobs.process_media.delay")
 @patch("app.api.jobs.JobStore")
 @patch("app.api.jobs.S3Storage")
-def test_create_job_generates_unique_ids(mock_storage, mock_job_store):
+def test_create_job_generates_unique_ids(
+    mock_storage,
+    mock_job_store,
+    mock_process,
+):
     mock_storage.return_value.generate_presigned_upload_url.return_value = (
         "https://example.com/presigned-url"
     )
@@ -78,6 +87,8 @@ def test_create_job_generates_unique_ids(mock_storage, mock_job_store):
 
     assert data1["job_id"] != data2["job_id"]
     assert data1["object_key"] != data2["object_key"]
+
+    assert mock_process.call_count == 2
 
 
 @patch("app.api.jobs.JobStore")
