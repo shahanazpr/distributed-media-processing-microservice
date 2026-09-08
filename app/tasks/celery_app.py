@@ -18,7 +18,10 @@ celery_app = Celery(
     "media_processing",
     broker=RABBITMQ_URL,
     backend=REDIS_URL,
-    include=["app.tasks.tasks"],
+    include=[
+        "app.tasks.tasks",
+        "app.tasks.media_tasks",
+    ],
 )
 
 
