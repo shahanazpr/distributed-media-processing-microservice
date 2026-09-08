@@ -190,22 +190,25 @@ The system handles:
 Transient failures are retried. Jobs that exceed the configured retry
 limit are marked FAILED and the error is stored.
 
-Monitoring
+## Monitoring
 
-Prometheus provides operational metrics such as:
-
--   Total jobs
--   Completed jobs
--   Failed jobs
--   Processing duration
--   Queue activity
--   Worker activity
--   CPU usage
--   Memory usage
+Prometheus provides operational metrics.
 
 Metrics endpoint:
 
-GET /metrics
+
+Tracked metrics:
+
+| Metric | Type | Description |
+|---|---|---|
+| media_jobs_total | Counter | Total jobs received |
+| media_jobs_succeeded_total | Counter | Jobs completed successfully |
+| media_jobs_failed_total | Counter | Jobs that failed |
+| media_job_status_total | Counter (labeled) | Count of jobs by status |
+| media_job_processing_duration_seconds | Histogram | Time spent processing a job |
+| media_queue_published_total | Counter | Messages published to RabbitMQ |
+
+To scrape locally, point a Prometheus instance at `http://localhost:8000/metrics`.
 
 Docker Compose
 
