@@ -34,12 +34,13 @@ def process_media(self, job_id: str) -> dict:
     """
 
     job_store = JobStore()
-    storage = S3Storage()
 
     job = job_store.get_job(job_id)
 
     if job is None:
         raise ValueError(f"Job not found: {job_id}")
+
+    storage = S3Storage()
 
     job_store.update_status(job_id, "PROCESSING")
 
@@ -131,5 +132,8 @@ def process_media(self, job_id: str) -> dict:
         }
 
     except Exception as exc:
-        job_store.update_status(job_id, "FAILED")
+        job_store.update_status(
+            job_id,
+            "FAILED",
+        )
         raise
