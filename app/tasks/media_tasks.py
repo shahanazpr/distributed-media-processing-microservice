@@ -42,7 +42,7 @@ def process_media(self, job_id: str) -> dict:
 
     storage = S3Storage()
 
-    job_store.update_status(job_id, "PROCESSING")
+    job_store.update_status(job_id, "processing")
 
     filename = job["filename"]
     object_key = job["object_key"]
@@ -140,13 +140,13 @@ def process_media(self, job_id: str) -> dict:
         # Update Redis with completed status and output
         job_store.update_job(
             job_id=job_id,
-            status="COMPLETED",
+            status="completed",
             output=output,
         )
 
         return {
             "job_id": job_id,
-            "status": "COMPLETED",
+            "status": "completed",
             "output": output,
         }
 
@@ -155,7 +155,7 @@ def process_media(self, job_id: str) -> dict:
         # Update Redis with failed status and error
         job_store.update_job(
             job_id=job_id,
-            status="FAILED",
+            status="failed",
             error=str(exc),
         )
 
