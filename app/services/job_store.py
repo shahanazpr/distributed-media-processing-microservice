@@ -94,3 +94,31 @@ class JobStore:
         )
 
         return job
+
+    def update_job(
+        self,
+        job_id: str,
+        status: str | None = None,
+        output: dict | None = None,
+        error: str | None = None,
+    ) -> dict | None:
+        job = self.get_job(job_id)
+
+        if job is None:
+            return None
+
+        if status is not None:
+            job["status"] = status
+
+        if output is not None:
+            job["output"] = output
+
+        if error is not None:
+            job["error"] = error
+
+        self.client.set(
+            f"job:{job_id}",
+            json.dumps(job),
+        )
+
+        return job

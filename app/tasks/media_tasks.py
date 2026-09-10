@@ -1,8 +1,15 @@
 import tempfile
 from pathlib import Path
 
-from app.media.image_processor import validate_image
+from botocore.exceptions import (
+    ConnectionClosedError,
+    ConnectTimeoutError,
+    EndpointConnectionError,
+    ReadTimeoutError,
+)
+
 from app.processing.ffmpeg import FFmpegProcessor
+from app.processing.image import ImageProcessor
 from app.services.job_store import JobStore
 from app.storage.s3 import S3Storage
 from app.tasks.celery_app import celery_app
@@ -11,36 +18,40 @@ from app.tasks.celery_app import celery_app
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 
+TRANSIENT_ERRORS = (
+    ConnectionClosedError,
+    ConnectTimeoutError,
+    EndpointConnectionError,
+    ReadTimeoutError,
+)
+
 
 @celery_app.task(
     bind=True,
-    autoretry_for=(ConnectionError, TimeoutError),
+    autoretry_for=TRANSIENT_ERRORS,
     retry_backoff=True,
     retry_kwargs={"max_retries": 3},
 )
 def process_media(self, job_id: str) -> dict:
     """
-    Process an image or video job using Celery.
+    Process a media job asynchronously.
 
     Flow:
-    1. Retrieve job from Redis
-    2. Set status to PROCESSING
-    3. Download input from S3
-    4. Detect media type
-    5. Process using Pillow or FFmpeg
-    6. Upload output to S3
-    7. Update Redis to COMPLETED
-    8. Mark FAILED when processing fails
+        Redis pending
+        -> Redis processing
+        -> Download from S3
+        -> Pillow / FFmpeg processing
+        -> Upload output to S3
+        -> Redis completed
     """
 
     job_store = JobStore()
+    storage = S3Storage()
 
     job = job_store.get_job(job_id)
 
     if job is None:
         raise ValueError(f"Job not found: {job_id}")
-
-    storage = S3Storage()
 
     job_store.update_status(job_id, "processing")
 
@@ -68,25 +79,18 @@ def process_media(self, job_id: str) -> dict:
                 str(input_path),
             )
 
-            # -------------------------
-            # IMAGE PROCESSING
-            # -------------------------
+            # Image processing using Pillow
             if extension in IMAGE_EXTENSIONS:
-
-                image = validate_image(
-                    str(input_path)
-                )
-
                 output_path = (
                     output_dir
-                    / f"{Path(filename).stem}_processed.jpg"
+                    / f"{Path(filename).stem}_resized.jpg"
                 )
 
-                image.save(
-                    output_path,
-                    format="JPEG",
-                    quality=85,
-                    optimize=True,
+                processor = ImageProcessor()
+
+                processor.process(
+                    str(input_path),
+                    str(output_path),
                 )
 
                 output_key = (
@@ -103,11 +107,8 @@ def process_media(self, job_id: str) -> dict:
                     "object_key": output_key,
                 }
 
-            # -------------------------
-            # VIDEO PROCESSING
-            # -------------------------
+            # Video processing using FFmpeg
             elif extension in VIDEO_EXTENSIONS:
-
                 processor = FFmpegProcessor()
 
                 results = processor.process(
@@ -118,7 +119,6 @@ def process_media(self, job_id: str) -> dict:
                 output = {}
 
                 for output_type, output_path in results.items():
-
                     output_key = (
                         f"outputs/{job_id}/{Path(output_path).name}"
                     )
@@ -129,7 +129,7 @@ def process_media(self, job_id: str) -> dict:
                     )
 
                     output[output_type] = {
-                        "object_key": output_key
+                        "object_key": output_key,
                     }
 
             else:
@@ -137,9 +137,9 @@ def process_media(self, job_id: str) -> dict:
                     f"Unsupported media type: {extension}"
                 )
 
-        # Update Redis with completed status and output
+        # Save completed status and output in Redis
         job_store.update_job(
-            job_id=job_id,
+            job_id,
             status="completed",
             output=output,
         )
@@ -150,11 +150,22 @@ def process_media(self, job_id: str) -> dict:
             "output": output,
         }
 
-    except Exception as exc:
+    except TRANSIENT_ERRORS as exc:
+        # Celery automatically retries transient S3/network errors.
+        # Mark the job as failed only after the final retry.
+        if self.request.retries >= 3:
+            job_store.update_job(
+                job_id,
+                status="failed",
+                error=str(exc),
+            )
 
-        # Update Redis with failed status and error
+        raise
+
+    except Exception as exc:
+        # Permanent processing errors are marked as failed.
         job_store.update_job(
-            job_id=job_id,
+            job_id,
             status="failed",
             error=str(exc),
         )

@@ -77,6 +77,78 @@ class FFmpegProcessor:
 
         return str(output_file)
 
+    def apply_watermark(
+        self,
+        input_path: str,
+        output_path: str,
+        watermark_path: str,
+        position: str = "10:10",
+    ) -> str:
+        """
+        Apply an image watermark to a video.
+
+        Args:
+            input_path: Path to the input video.
+            output_path: Path for the watermarked video.
+            watermark_path: Path to the watermark image.
+            position: Watermark position in FFmpeg overlay format.
+
+        Returns:
+            Path to the watermarked video.
+
+        Raises:
+            FileNotFoundError: If the input video or watermark image does not exist.
+            RuntimeError: If FFmpeg processing fails.
+        """
+
+        input_file = Path(input_path)
+        output_file = Path(output_path)
+        watermark_file = Path(watermark_path)
+
+        if not input_file.exists():
+            raise FileNotFoundError(
+                f"Input video not found: {input_file}"
+            )
+
+        if not watermark_file.exists():
+            raise FileNotFoundError(
+                f"Watermark image not found: {watermark_file}"
+            )
+
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        command = [
+            self.ffmpeg_path,
+            "-i",
+            str(input_file),
+            "-i",
+            str(watermark_file),
+            "-filter_complex",
+            f"overlay={position}",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "23",
+            "-c:a",
+            "aac",
+            "-movflags",
+            "+faststart",
+            "-y",
+            str(output_file),
+        ]
+
+        self._run_ffmpeg(command)
+
+        if not output_file.exists():
+            raise RuntimeError(
+                "FFmpeg completed successfully but watermarked video "
+                "was not created."
+            )
+
+        return str(output_file)
+
     def extract_thumbnail(
         self,
         input_path: str,
@@ -132,6 +204,7 @@ class FFmpegProcessor:
             thumbnail.jpg
 
         If output_dir is not supplied, a temporary directory is created.
+        The caller is responsible for cleaning up the temporary directory.
         """
 
         input_file = Path(input_path)
@@ -144,44 +217,27 @@ class FFmpegProcessor:
         if output_dir is not None:
             output_directory = Path(output_dir)
             output_directory.mkdir(parents=True, exist_ok=True)
-
-            optimized_path = output_directory / "optimized.mp4"
-            thumbnail_path = output_directory / "thumbnail.jpg"
-
-            self.process_video(
-                str(input_file),
-                str(optimized_path),
-                resolution,
+        else:
+            temp_dir = tempfile.mkdtemp(
+                prefix="ffmpeg_processing_"
             )
+            output_directory = Path(temp_dir)
 
-            self.extract_thumbnail(
-                str(input_file),
-                str(thumbnail_path),
-            )
+        optimized_path = output_directory / "optimized.mp4"
+        thumbnail_path = output_directory / "thumbnail.jpg"
 
-            return {
-                "video": str(optimized_path),
-                "thumbnail": str(thumbnail_path),
-            }
+        self.process_video(
+            str(input_file),
+            str(optimized_path),
+            resolution,
+        )
 
-        with tempfile.TemporaryDirectory(
-            prefix="ffmpeg_processing_"
-        ) as temp_dir:
-            optimized_path = Path(temp_dir) / "optimized.mp4"
-            thumbnail_path = Path(temp_dir) / "thumbnail.jpg"
+        self.extract_thumbnail(
+            str(input_file),
+            str(thumbnail_path),
+        )
 
-            self.process_video(
-                str(input_file),
-                str(optimized_path),
-                resolution,
-            )
-
-            self.extract_thumbnail(
-                str(input_file),
-                str(thumbnail_path),
-            )
-
-            return {
-                "video": str(optimized_path),
-                "thumbnail": str(thumbnail_path),
-            }
+        return {
+            "video": str(optimized_path),
+            "thumbnail": str(thumbnail_path),
+        }
