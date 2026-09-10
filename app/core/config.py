@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     # Leave blank to use real AWS; set this if using a local S3 stand-in (e.g. MinIO)
     s3_endpoint_url: str = ""
 
+    # --- CloudFront ---
+    cloudfront_domain: str = ""  # e.g. d123abc4567.cloudfront.net
+
     # --- Redis ---
     redis_host: str = "localhost"
     redis_port: int = 6379
