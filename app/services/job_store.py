@@ -1,17 +1,20 @@
 import json
-import os
 from datetime import datetime, timezone
 
 import redis
 
+from app.core.config import get_settings
+
 
 class JobStore:
     def __init__(self, client=None):
-        self.client = client or redis.from_url(
-            os.getenv(
-                "REDIS_URL",
-                "redis://localhost:6379/0",
-            ),
+        settings = get_settings()
+
+        self.client = client or redis.Redis(
+            host=settings.redis_host,
+            port=settings.redis_port,
+            db=settings.redis_db,
+            password=settings.redis_password or None,
             decode_responses=True,
         )
 

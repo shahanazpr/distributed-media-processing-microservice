@@ -37,16 +37,12 @@ def process_media(self, job_id: str) -> dict:
     Process a media job asynchronously.
 
     Flow:
-        Redis PENDING
-        -> Redis PROCESSING
+        Redis pending
+        -> Redis processing
         -> Download from S3
         -> Pillow / FFmpeg processing
         -> Upload output to S3
-        -> Redis COMPLETED
-
-    Only transient S3/network connection errors are
-    automatically retried by Celery.
-    Permanent processing errors are marked as FAILED.
+        -> Redis completed
     """
 
     job_store = JobStore()
@@ -70,8 +66,12 @@ def process_media(self, job_id: str) -> dict:
         ) as temp_dir:
 
             input_path = Path(temp_dir) / filename
+
             output_dir = Path(temp_dir) / "output"
-            output_dir.mkdir(parents=True, exist_ok=True)
+            output_dir.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
 
             # Download input media from S3
             storage.download_file(
@@ -137,6 +137,7 @@ def process_media(self, job_id: str) -> dict:
                     f"Unsupported media type: {extension}"
                 )
 
+        # Save completed status and output in Redis
         job_store.update_job(
             job_id,
             status="completed",
@@ -150,7 +151,7 @@ def process_media(self, job_id: str) -> dict:
         }
 
     except TRANSIENT_ERRORS as exc:
-        # Celery will automatically retry these errors.
+        # Celery automatically retries transient S3/network errors.
         # Mark the job as failed only after the final retry.
         if self.request.retries >= 3:
             job_store.update_job(
@@ -162,7 +163,7 @@ def process_media(self, job_id: str) -> dict:
         raise
 
     except Exception as exc:
-        # Permanent errors should not be automatically retried.
+        # Permanent processing errors are marked as failed.
         job_store.update_job(
             job_id,
             status="failed",
