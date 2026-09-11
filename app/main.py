@@ -1,5 +1,4 @@
 from fastapi import FastAPI
-from app.api.jobs import router as jobs_router
 
 from app.api.jobs import router as jobs_router
 
@@ -15,6 +14,4 @@ app.include_router(jobs_router)
 
 @app.get("/health")
 async def health_check():
-    return {
-        "status": "healthy",
-    }
+    return {"status": "healthy"}
