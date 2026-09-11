@@ -36,18 +36,6 @@ class FFmpegProcessor:
     ) -> str:
         """
         Transcode a video to an optimized H.264 MP4 file.
-
-        Args:
-            input_path: Path to the input video.
-            output_path: Path for the processed MP4.
-            resolution: Output resolution in WIDTH:HEIGHT format.
-
-        Returns:
-            Path to the processed video.
-
-        Raises:
-            FileNotFoundError: If the input video does not exist.
-            RuntimeError: If FFmpeg processing fails.
         """
 
         input_file = Path(input_path)
@@ -167,17 +155,7 @@ class FFmpegProcessor:
         output_path: str,
         timestamp: str = "00:00:01",
     ) -> str:
-        """
-        Extract a JPEG thumbnail from a video.
-
-        Args:
-            input_path: Path to the input video.
-            output_path: Path for the thumbnail.
-            timestamp: Timestamp from which to extract the thumbnail.
-
-        Returns:
-            Path to the generated thumbnail.
-        """
+        """Extract a JPEG thumbnail from a video."""
 
         input_file = Path(input_path)
         output_file = Path(output_path)

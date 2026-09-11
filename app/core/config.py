@@ -3,7 +3,10 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
     # --- Application ---
     app_name: str = "Media Processing Microservice"
@@ -49,4 +52,6 @@ class Settings(BaseSettings):
 
 @lru_cache()
 def get_settings() -> Settings:
+
     return Settings()
+
