@@ -309,3 +309,63 @@ def test_failed_job_stores_error(fake_job_store):
 
     assert job["status"] == "failed"
     assert job["error"] == "Media processing failed"
+
+from app.worker.tasks import process_media
+
+
+def test_process_media_task_returns_completed():
+    result = process_media.run("job-celery-001")
+
+    assert result["job_id"] == "job-celery-001"
+    assert result["status"] == "COMPLETED"
+
+
+def test_process_media_task_has_retry_configuration():
+    assert process_media.autoretry_for == (Exception,)
+    assert process_media.max_retries == 3
+
+
+def test_retry_configuration_allows_transient_failure():
+    attempts = {"count": 0}
+
+    @process_media.app.task(
+        bind=True,
+        autoretry_for=(Exception,),
+        retry_backoff=False,
+        retry_kwargs={"max_retries": 3},
+    )
+    def flaky_task(self):
+        attempts["count"] += 1
+
+        if attempts["count"] < 2:
+            raise RuntimeError("Temporary processing failure")
+
+        return {
+            "status": "COMPLETED",
+            "attempts": attempts["count"],
+        }
+
+    result = flaky_task.apply()
+
+    assert result.successful()
+    assert result.result["status"] == "COMPLETED"
+    assert result.result["attempts"] == 2
+
+
+def test_retry_configuration_stops_after_max_retries():
+    attempts = {"count": 0}
+
+    @process_media.app.task(
+        bind=True,
+        autoretry_for=(Exception,),
+        retry_backoff=False,
+        retry_kwargs={"max_retries": 2},
+    )
+    def failing_task(self):
+        attempts["count"] += 1
+        raise RuntimeError("Permanent processing failure")
+
+    result = failing_task.apply()
+
+    assert result.failed()
+    assert attempts["count"] == 3
