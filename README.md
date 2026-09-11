@@ -433,3 +433,37 @@ testing is completed, and deployment documentation is finalized.
 Repository
 
 https://github.com/shahanazpr/distributed-media-processing-microservice
+
+## CloudFront CDN
+
+Processed media in the S3 output bucket is served through CloudFront.
+
+### Configuration
+
+| Variable | Description |
+|---|---|
+| CLOUDFRONT_DOMAIN | The CloudFront distribution's domain (e.g. `d123abc4567.cloudfront.net`) |
+
+### How it works
+
+Given an S3 object key (e.g. `output/{job_id}/processed/image.jpg` or `output/{job_id}/thumbnail/video.jpg`), `get_output_cdn_info()`:
+1. Checks the object exists in S3 via `S3Storage.object_exists()`
+2. Returns `cdn_url: null` if the object is missing, with an `error` field explaining why
+3. Otherwise returns `https://<CLOUDFRONT_DOMAIN>/<object_key>` as the CDN URL
+
+If `CLOUDFRONT_DOMAIN` isn't configured, `cdn_url` is `null` rather than raising an error.
+
+### Setting up a CloudFront distribution (AWS Console)
+
+1. Go to CloudFront in the AWS Console
+2. Create a distribution
+3. Set the origin to the S3 output bucket
+4. Restrict bucket access to CloudFront only (Origin Access Control)
+5. Copy the distribution's domain name into `CLOUDFRONT_DOMAIN`
+
+### Integration status
+
+`get_output_cdn_info()` is implemented and unit-tested but not yet wired into the Celery
+worker's job-completion flow. There are currently two separate, unreconciled Celery task
+setups in the codebase (`app/tasks/` and `app/worker/`) — integration should happen once
+that duplication is resolved.
