@@ -2,6 +2,12 @@ import io
 from pathlib import Path
 
 import pytest
+from botocore.exceptions import (
+    ConnectionClosedError,
+    ConnectTimeoutError,
+    EndpointConnectionError,
+    ReadTimeoutError,
+)
 from PIL import Image
 
 from app.tasks.media_tasks import process_media
@@ -635,7 +641,7 @@ def test_real_image_media_task_workflow(
 
     output_key = (
         "outputs/image-e2e-001/"
-        "input_processed.jpg"
+        "input_resized.jpg"
     )
 
     assert output_key in uploaded
@@ -1190,9 +1196,16 @@ def test_real_media_task_unsupported_media_fails(
 
 
 def test_process_media_task_has_retry_configuration():
-    assert process_media.autoretry_for == (
-        ConnectionError,
-        TimeoutError,
+    expected_errors = {
+        ConnectionClosedError,
+        ConnectTimeoutError,
+        EndpointConnectionError,
+        ReadTimeoutError,
+    }
+
+    assert (
+        set(process_media.autoretry_for)
+        == expected_errors
     )
 
     assert (
