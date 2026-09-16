@@ -654,6 +654,128 @@ def test_real_image_media_task_workflow(
     )
 
 
+def test_real_image_media_task_validates_uploaded_jpeg_output(
+    monkeypatch,
+):
+    from app.tasks import media_tasks
+
+    job_id = "image-output-validation-001"
+
+    jobs = {
+        job_id: {
+            "job_id": job_id,
+            "filename": "input.png",
+            "object_key": (
+                "input/image-output-validation-001/"
+                "original/input.png"
+            ),
+            "status": "pending",
+        }
+    }
+
+    uploaded = {}
+
+    class FakeJobStore:
+        def get_job(
+            self,
+            requested_job_id,
+        ):
+            return jobs.get(
+                requested_job_id
+            )
+
+        def update_status(
+            self,
+            requested_job_id,
+            status,
+        ):
+            jobs[requested_job_id][
+                "status"
+            ] = status
+
+        def update_job(
+            self,
+            job_id,
+            status,
+            output=None,
+            error=None,
+        ):
+            jobs[job_id]["status"] = status
+
+            if output is not None:
+                jobs[job_id]["output"] = (
+                    output
+                )
+
+            if error is not None:
+                jobs[job_id]["error"] = (
+                    error
+                )
+
+    class FakeS3Storage:
+        def download_file(
+            self,
+            object_name,
+            file_path,
+        ):
+            image = Image.new(
+                "RGB",
+                (1920, 1080),
+                "blue",
+            )
+
+            image.save(
+                file_path,
+                format="PNG",
+            )
+
+        def upload_file(
+            self,
+            file_path,
+            object_name,
+        ):
+            uploaded[object_name] = (
+                Path(file_path).read_bytes()
+            )
+
+    monkeypatch.setattr(
+        media_tasks,
+        "JobStore",
+        FakeJobStore,
+    )
+
+    monkeypatch.setattr(
+        media_tasks,
+        "S3Storage",
+        FakeS3Storage,
+    )
+
+    result = process_media.apply(
+        args=[job_id]
+    )
+
+    assert result.successful()
+
+    output_key = (
+        "outputs/image-output-validation-001/"
+        "input_resized.jpg"
+    )
+
+    assert output_key in uploaded
+
+    output_bytes = uploaded[output_key]
+
+    with Image.open(
+        io.BytesIO(output_bytes)
+    ) as output_image:
+        assert output_image.format == "JPEG"
+        assert output_image.mode == "RGB"
+        assert output_image.size == (
+            1280,
+            720,
+        )
+
+
 # ---------------------------------------------------------
 # REAL VIDEO MEDIA TASK
 # ---------------------------------------------------------
