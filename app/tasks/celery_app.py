@@ -1,26 +1,15 @@
-import os
-
 from celery import Celery
 
+from app.core.config import get_settings
 
-RABBITMQ_URL = os.getenv(
-    "CELERY_BROKER_URL",
-    "amqp://guest:guest@localhost:5672//",
-)
-
-REDIS_URL = os.getenv(
-    "CELERY_RESULT_BACKEND",
-    "redis://localhost:6379/0",
-)
-
+settings = get_settings()
 
 celery_app = Celery(
     "media_processing",
-    broker=RABBITMQ_URL,
-    backend=REDIS_URL,
+    broker=settings.rabbitmq_url,
+    backend=settings.redis_url,
     include=["app.tasks.media_tasks"],
 )
-
 
 celery_app.conf.update(
     task_serializer="json",
