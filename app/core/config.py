@@ -36,8 +36,8 @@ class Settings(BaseSettings):
     # --- RabbitMQ ---
     rabbitmq_host: str = "localhost"
     rabbitmq_port: int = 5672
-    rabbitmq_user: str = "guest"
-    rabbitmq_password: str = "guest"
+    rabbitmq_user: str = ""
+    rabbitmq_password: str = ""
     rabbitmq_vhost: str = "/"
 
     @property
