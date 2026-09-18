@@ -8,8 +8,9 @@ celery_app = Celery(
     "media_processing",
     broker=settings.rabbitmq_url,
     backend=settings.redis_url,
-    include=["app.worker.tasks"],
+    include=["app.tasks.media_tasks"],   # was "app.worker.tasks"
 )
+
 
 celery_app.conf.update(
     task_serializer="json",
