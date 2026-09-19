@@ -1,6 +1,6 @@
 import os
 import tempfile
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 
 from app.storage.s3 import S3Storage
 
@@ -13,25 +13,36 @@ class S3MediaWorkflow:
 
     @staticmethod
     def _safe_filename(filename: str) -> str:
-        return PureWindowsPath(filename).name
+        """Return only the filename, handling Windows and Unix paths."""
+        filename = filename.replace("\\", "/")
+        return Path(filename).name
 
     @staticmethod
     def original_key(job_id: str, filename: str) -> str:
-        return f"input/{job_id}/original/{S3MediaWorkflow._safe_filename(filename)}"
+        return (
+            f"input/{job_id}/original/"
+            f"{S3MediaWorkflow._safe_filename(filename)}"
+        )
 
     @staticmethod
     def processed_key(job_id: str, filename: str) -> str:
-        return f"output/{job_id}/processed/{S3MediaWorkflow._safe_filename(filename)}"
+        return (
+            f"output/{job_id}/processed/"
+            f"{S3MediaWorkflow._safe_filename(filename)}"
+        )
 
     @staticmethod
     def thumbnail_key(job_id: str, filename: str) -> str:
-        return f"output/{job_id}/thumbnail/{S3MediaWorkflow._safe_filename(filename)}"
+        return (
+            f"output/{job_id}/thumbnail/"
+            f"{S3MediaWorkflow._safe_filename(filename)}"
+        )
 
     def retrieve_input(self, job_id: str, filename: str) -> str:
         """Download the original media from S3 to a temporary local file."""
         object_name = self.original_key(job_id, filename)
 
-        suffix = Path(filename).suffix
+        suffix = Path(filename.replace("\\", "/")).suffix
         temp_file = tempfile.NamedTemporaryFile(
             delete=False,
             suffix=suffix,
