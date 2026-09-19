@@ -12,22 +12,29 @@ class S3MediaWorkflow:
         self.storage = storage or S3Storage()
 
     @staticmethod
+    def _filename_only(filename: str) -> str:
+        """Return a platform-independent basename."""
+        return Path(filename.replace("\\", "/")).name
+
+    @staticmethod
     def original_key(job_id: str, filename: str) -> str:
-        return f"input/{job_id}/original/{Path(filename).name}"
+        return f"input/{job_id}/original/{S3MediaWorkflow._filename_only(filename)}"
 
     @staticmethod
     def processed_key(job_id: str, filename: str) -> str:
-        return f"output/{job_id}/processed/{Path(filename).name}"
+        return f"output/{job_id}/processed/{S3MediaWorkflow._filename_only(filename)}"
 
     @staticmethod
     def thumbnail_key(job_id: str, filename: str) -> str:
-        return f"output/{job_id}/thumbnail/{Path(filename).name}"
+        return f"output/{job_id}/thumbnail/{S3MediaWorkflow._filename_only(filename)}"
 
     def retrieve_input(self, job_id: str, filename: str) -> str:
         """Download the original media from S3 to a temporary local file."""
         object_name = self.original_key(job_id, filename)
 
-        suffix = Path(filename).suffix
+        safe_filename = self._filename_only(filename)
+        suffix = Path(safe_filename).suffix
+
         temp_file = tempfile.NamedTemporaryFile(
             delete=False,
             suffix=suffix,
@@ -52,9 +59,14 @@ class S3MediaWorkflow:
     ) -> str:
         """Upload a processed media file to S3."""
         filename = filename or Path(file_path).name
+
         object_name = self.processed_key(job_id, filename)
 
-        self.storage.upload_file(file_path, object_name)
+        self.storage.upload_file(
+            file_path,
+            object_name,
+        )
+
         return object_name
 
     def upload_thumbnail(
@@ -65,9 +77,14 @@ class S3MediaWorkflow:
     ) -> str:
         """Upload a video thumbnail to S3."""
         filename = filename or Path(file_path).name
+
         object_name = self.thumbnail_key(job_id, filename)
 
-        self.storage.upload_file(file_path, object_name)
+        self.storage.upload_file(
+            file_path,
+            object_name,
+        )
+
         return object_name
 
     def cleanup(self, *file_paths: str) -> None:
