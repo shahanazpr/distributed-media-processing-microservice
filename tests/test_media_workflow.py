@@ -1,123 +1,286 @@
-import os
-import tempfile
 from pathlib import Path
+from unittest.mock import Mock
 
-from app.storage.s3 import S3Storage
+import pytest
+
+from app.storage.media_workflow import S3MediaWorkflow
 
 
-class S3MediaWorkflow:
-    """Handles S3 object naming and media workflow operations."""
+def test_original_key():
+    key = S3MediaWorkflow.original_key(
+        "job123",
+        "video.mp4",
+    )
 
-    def __init__(self, storage=None):
-        self.storage = storage or S3Storage()
+    assert key == "input/job123/original/video.mp4"
 
-    @staticmethod
-    def _filename_only(filename: str) -> str:
-        """Return a platform-independent basename.
 
-        Handles both Windows-style (\\) and POSIX-style (/) paths.
-        """
-        return Path(filename.replace("\\", "/")).name
+def test_processed_key():
+    key = S3MediaWorkflow.processed_key(
+        "job123",
+        "video.mp4",
+    )
 
-    @staticmethod
-    def original_key(job_id: str, filename: str) -> str:
-        """Build the S3 key for an original media file."""
-        return (
-            f"input/{job_id}/original/"
-            f"{S3MediaWorkflow._filename_only(filename)}"
+    assert key == "output/job123/processed/video.mp4"
+
+
+def test_thumbnail_key():
+    key = S3MediaWorkflow.thumbnail_key(
+        "job123",
+        "thumbnail.jpg",
+    )
+
+    assert key == "output/job123/thumbnail/thumbnail.jpg"
+
+
+def test_filename_path_is_sanitized():
+    key = S3MediaWorkflow.original_key(
+        "job123",
+        "C:\\uploads\\video.mp4",
+    )
+
+    assert key == "input/job123/original/video.mp4"
+
+
+def test_processed_filename_path_is_sanitized():
+    key = S3MediaWorkflow.processed_key(
+        "job123",
+        "C:\\uploads\\video.mp4",
+    )
+
+    assert key == "output/job123/processed/video.mp4"
+
+
+def test_thumbnail_filename_path_is_sanitized():
+    key = S3MediaWorkflow.thumbnail_key(
+        "job123",
+        "C:\\uploads\\thumbnail.jpg",
+    )
+
+    assert key == "output/job123/thumbnail/thumbnail.jpg"
+
+
+def test_retrieve_input(tmp_path):
+    storage = Mock()
+    workflow = S3MediaWorkflow(storage=storage)
+
+    storage.download_file.side_effect = (
+        lambda object_name, file_path: Path(file_path).write_bytes(
+            b"test media"
+        )
+    )
+
+    file_path = workflow.retrieve_input(
+        "job123",
+        "video.mp4",
+    )
+
+    try:
+        storage.download_file.assert_called_once()
+
+        object_name, downloaded_path = (
+            storage.download_file.call_args.args
         )
 
-    @staticmethod
-    def processed_key(job_id: str, filename: str) -> str:
-        """Build the S3 key for a processed media file."""
-        return (
-            f"output/{job_id}/processed/"
-            f"{S3MediaWorkflow._filename_only(filename)}"
+        assert object_name == "input/job123/original/video.mp4"
+        assert downloaded_path == file_path
+        assert Path(file_path).exists()
+        assert Path(file_path).read_bytes() == b"test media"
+    finally:
+        workflow.cleanup(file_path)
+
+
+def test_retrieve_input_preserves_extension(tmp_path):
+    storage = Mock()
+    workflow = S3MediaWorkflow(storage=storage)
+
+    storage.download_file.side_effect = (
+        lambda object_name, file_path: Path(file_path).write_bytes(
+            b"test media"
+        )
+    )
+
+    file_path = workflow.retrieve_input(
+        "job123",
+        "C:\\uploads\\video.mp4",
+    )
+
+    try:
+        assert Path(file_path).suffix == ".mp4"
+        assert Path(file_path).exists()
+    finally:
+        workflow.cleanup(file_path)
+
+
+def test_retrieve_input_cleans_up_when_download_fails():
+    storage = Mock()
+    storage.download_file.side_effect = RuntimeError(
+        "S3 download failed"
+    )
+
+    workflow = S3MediaWorkflow(storage=storage)
+
+    with pytest.raises(RuntimeError, match="S3 download failed"):
+        workflow.retrieve_input(
+            "job123",
+            "video.mp4",
         )
 
-    @staticmethod
-    def thumbnail_key(job_id: str, filename: str) -> str:
-        """Build the S3 key for a thumbnail."""
-        return (
-            f"output/{job_id}/thumbnail/"
-            f"{S3MediaWorkflow._filename_only(filename)}"
+
+def test_upload_processed(tmp_path):
+    storage = Mock()
+    workflow = S3MediaWorkflow(storage=storage)
+
+    file_path = tmp_path / "optimized.mp4"
+    file_path.write_bytes(b"processed media")
+
+    object_name = workflow.upload_processed(
+        "job123",
+        str(file_path),
+    )
+
+    storage.upload_file.assert_called_once_with(
+        str(file_path),
+        "output/job123/processed/optimized.mp4",
+    )
+
+    assert object_name == (
+        "output/job123/processed/optimized.mp4"
+    )
+
+
+def test_upload_processed_with_filename(tmp_path):
+    storage = Mock()
+    workflow = S3MediaWorkflow(storage=storage)
+
+    file_path = tmp_path / "processed.mp4"
+    file_path.write_bytes(b"processed media")
+
+    object_name = workflow.upload_processed(
+        "job123",
+        str(file_path),
+        "C:\\uploads\\final.mp4",
+    )
+
+    storage.upload_file.assert_called_once_with(
+        str(file_path),
+        "output/job123/processed/final.mp4",
+    )
+
+    assert object_name == (
+        "output/job123/processed/final.mp4"
+    )
+
+
+def test_upload_thumbnail(tmp_path):
+    storage = Mock()
+    workflow = S3MediaWorkflow(storage=storage)
+
+    file_path = tmp_path / "thumbnail.jpg"
+    file_path.write_bytes(b"thumbnail")
+
+    object_name = workflow.upload_thumbnail(
+        "job123",
+        str(file_path),
+    )
+
+    storage.upload_file.assert_called_once_with(
+        str(file_path),
+        "output/job123/thumbnail/thumbnail.jpg",
+    )
+
+    assert object_name == (
+        "output/job123/thumbnail/thumbnail.jpg"
+    )
+
+
+def test_upload_thumbnail_with_filename(tmp_path):
+    storage = Mock()
+    workflow = S3MediaWorkflow(storage=storage)
+
+    file_path = tmp_path / "thumb.jpg"
+    file_path.write_bytes(b"thumbnail")
+
+    object_name = workflow.upload_thumbnail(
+        "job123",
+        str(file_path),
+        "C:\\uploads\\final-thumbnail.jpg",
+    )
+
+    storage.upload_file.assert_called_once_with(
+        str(file_path),
+        "output/job123/thumbnail/final-thumbnail.jpg",
+    )
+
+    assert object_name == (
+        "output/job123/thumbnail/final-thumbnail.jpg"
+    )
+
+
+def test_upload_processed_failure(tmp_path):
+    storage = Mock()
+    storage.upload_file.side_effect = RuntimeError(
+        "S3 upload failed"
+    )
+
+    workflow = S3MediaWorkflow(storage=storage)
+
+    file_path = tmp_path / "optimized.mp4"
+    file_path.write_bytes(b"processed media")
+
+    with pytest.raises(RuntimeError, match="S3 upload failed"):
+        workflow.upload_processed(
+            "job123",
+            str(file_path),
         )
 
-    def retrieve_input(self, job_id: str, filename: str) -> str:
-        """Download the original media from S3 to a temporary local file."""
-        object_name = self.original_key(job_id, filename)
 
-        safe_filename = self._filename_only(filename)
-        suffix = Path(safe_filename).suffix
+def test_upload_thumbnail_failure(tmp_path):
+    storage = Mock()
+    storage.upload_file.side_effect = RuntimeError(
+        "S3 upload failed"
+    )
 
-        temp_file = tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=suffix,
-        )
-        temp_file.close()
+    workflow = S3MediaWorkflow(storage=storage)
 
-        try:
-            self.storage.download_file(
-                object_name,
-                temp_file.name,
-            )
-            return temp_file.name
-        except Exception:
-            self._cleanup(temp_file.name)
-            raise
+    file_path = tmp_path / "thumbnail.jpg"
+    file_path.write_bytes(b"thumbnail")
 
-    def upload_processed(
-        self,
-        job_id: str,
-        file_path: str,
-        filename: str | None = None,
-    ) -> str:
-        """Upload a processed media file to S3."""
-        filename = filename or Path(file_path).name
-
-        object_name = self.processed_key(
-            job_id,
-            filename,
+    with pytest.raises(RuntimeError, match="S3 upload failed"):
+        workflow.upload_thumbnail(
+            "job123",
+            str(file_path),
         )
 
-        self.storage.upload_file(
-            file_path,
-            object_name,
-        )
 
-        return object_name
+def test_cleanup(tmp_path):
+    storage = Mock()
+    workflow = S3MediaWorkflow(storage=storage)
 
-    def upload_thumbnail(
-        self,
-        job_id: str,
-        file_path: str,
-        filename: str | None = None,
-    ) -> str:
-        """Upload a thumbnail file to S3."""
-        filename = filename or Path(file_path).name
+    file1 = tmp_path / "input.mp4"
+    file2 = tmp_path / "thumbnail.jpg"
 
-        object_name = self.thumbnail_key(
-            job_id,
-            filename,
-        )
+    file1.write_bytes(b"input")
+    file2.write_bytes(b"thumbnail")
 
-        self.storage.upload_file(
-            file_path,
-            object_name,
-        )
+    assert file1.exists()
+    assert file2.exists()
 
-        return object_name
+    workflow.cleanup(
+        str(file1),
+        str(file2),
+    )
 
-    def cleanup(self, *file_paths: str) -> None:
-        """Remove local temporary files."""
-        for file_path in file_paths:
-            self._cleanup(file_path)
+    assert not file1.exists()
+    assert not file2.exists()
 
-    @staticmethod
-    def _cleanup(file_path: str) -> None:
-        """Remove a local file if it exists."""
-        try:
-            if file_path and os.path.exists(file_path):
-                os.remove(file_path)
-        except OSError:
-            pass
+
+def test_cleanup_missing_file(tmp_path):
+    storage = Mock()
+    workflow = S3MediaWorkflow(storage=storage)
+
+    missing_file = tmp_path / "missing.mp4"
+
+    workflow.cleanup(str(missing_file))
+
+    assert not missing_file.exists()
