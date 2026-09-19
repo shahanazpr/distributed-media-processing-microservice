@@ -146,3 +146,47 @@ def test_object_exists_other_error(monkeypatch):
         match="S3 object existence check failed",
     ):
         storage.object_exists("media/test.mp4")
+
+def test_generate_presigned_upload_url(monkeypatch):
+    monkeypatch.setenv("S3_BUCKET_NAME", "test-bucket")
+
+    client = Mock()
+    client.generate_presigned_url.return_value = (
+        "https://example.com/presigned-upload"
+    )
+
+    storage = S3Storage(client=client)
+
+    result = storage.generate_presigned_upload_url(
+        "uploads/job-1/video.mp4"
+    )
+
+    assert result == "https://example.com/presigned-upload"
+
+    client.generate_presigned_url.assert_called_once_with(
+        "put_object",
+        Params={
+            "Bucket": "test-bucket",
+            "Key": "uploads/job-1/video.mp4",
+        },
+        ExpiresIn=3600,
+    )
+
+
+def test_generate_presigned_upload_url_failure(monkeypatch):
+    monkeypatch.setenv("S3_BUCKET_NAME", "test-bucket")
+
+    client = Mock()
+    client.generate_presigned_url.side_effect = create_client_error(
+        "AccessDenied"
+    )
+
+    storage = S3Storage(client=client)
+
+    with pytest.raises(
+        RuntimeError,
+        match="Failed to generate presigned upload URL",
+    ):
+        storage.generate_presigned_upload_url(
+            "uploads/job-1/video.mp4"
+        )

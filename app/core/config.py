@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     # --- Application ---
     app_name: str = "Media Processing Microservice"
     app_env: str = "development"
-    debug: bool = True
+    debug: bool = False
     api_host: str = "0.0.0.0"
     api_port: int = 8000
 
@@ -36,8 +36,8 @@ class Settings(BaseSettings):
     # --- RabbitMQ ---
     rabbitmq_host: str = "localhost"
     rabbitmq_port: int = 5672
-    rabbitmq_user: str = "guest"
-    rabbitmq_password: str = "guest"
+    rabbitmq_user: str = ""
+    rabbitmq_password: str = ""
     rabbitmq_vhost: str = "/"
 
     @property

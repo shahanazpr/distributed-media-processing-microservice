@@ -12,7 +12,7 @@ from app.processing.ffmpeg import FFmpegProcessor
 from app.processing.image import ImageProcessor
 from app.services.job_store import JobStore
 from app.storage.s3 import S3Storage
-from app.worker.celery_app import celery_app
+from app.tasks.celery_app import celery_app
 
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
