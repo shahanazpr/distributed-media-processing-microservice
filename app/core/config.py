@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     # --- Application ---
     app_name: str = "Media Processing Microservice"
     app_env: str = "development"
-    debug: bool = True
+    debug: bool = False
     api_host: str = "0.0.0.0"
     api_port: int = 8000
 
@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     # Leave blank to use real AWS; set this if using a local S3 stand-in (e.g. MinIO)
     s3_endpoint_url: str = ""
 
+    # --- CloudFront ---
+    cloudfront_domain: str = ""  # e.g. d123abc4567.cloudfront.net
+
     # --- Redis ---
     redis_host: str = "localhost"
     redis_port: int = 6379
@@ -33,8 +36,8 @@ class Settings(BaseSettings):
     # --- RabbitMQ ---
     rabbitmq_host: str = "localhost"
     rabbitmq_port: int = 5672
-    rabbitmq_user: str = "guest"
-    rabbitmq_password: str = "guest"
+    rabbitmq_user: str = ""
+    rabbitmq_password: str = ""
     rabbitmq_vhost: str = "/"
 
     @property

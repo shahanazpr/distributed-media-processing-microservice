@@ -1,5 +1,7 @@
 import os
+
 from celery import Celery
+
 
 RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
 RABBITMQ_PORT = os.getenv("RABBITMQ_PORT", "5672")
@@ -16,12 +18,14 @@ RABBITMQ_URL = (
 
 REDIS_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
 
+
 celery_app = Celery(
     "media_processing",
     broker=RABBITMQ_URL,
     backend=REDIS_URL,
     include=["app.tasks.tasks"],
 )
+
 
 celery_app.conf.update(
     task_serializer="json",
