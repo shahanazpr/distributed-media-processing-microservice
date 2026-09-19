@@ -15,7 +15,7 @@ class S3MediaWorkflow:
     def _filename_only(filename: str) -> str:
         """Return a platform-independent basename.
 
-        Handles both Windows-style (\\) and POSIX-style (/) paths.
+        Handles both Windows-style and POSIX-style paths.
         """
         return Path(filename.replace("\\", "/")).name
 
@@ -75,10 +75,7 @@ class S3MediaWorkflow:
         """Upload a processed media file to S3."""
         filename = filename or Path(file_path).name
 
-        object_name = self.processed_key(
-            job_id,
-            filename,
-        )
+        object_name = self.processed_key(job_id, filename)
 
         self.storage.upload_file(
             file_path,
@@ -96,10 +93,7 @@ class S3MediaWorkflow:
         """Upload a thumbnail file to S3."""
         filename = filename or Path(file_path).name
 
-        object_name = self.thumbnail_key(
-            job_id,
-            filename,
-        )
+        object_name = self.thumbnail_key(job_id, filename)
 
         self.storage.upload_file(
             file_path,

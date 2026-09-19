@@ -42,13 +42,33 @@ def test_filename_path_is_sanitized():
     assert key == "input/job123/original/video.mp4"
 
 
+def test_processed_filename_path_is_sanitized():
+    key = S3MediaWorkflow.processed_key(
+        "job123",
+        "C:\\uploads\\video.mp4",
+    )
+
+    assert key == "output/job123/processed/video.mp4"
+
+
+def test_thumbnail_filename_path_is_sanitized():
+    key = S3MediaWorkflow.thumbnail_key(
+        "job123",
+        "C:\\uploads\\thumbnail.jpg",
+    )
+
+    assert key == "output/job123/thumbnail/thumbnail.jpg"
+
+
 def test_retrieve_input(tmp_path):
     storage = Mock()
     workflow = S3MediaWorkflow(storage=storage)
 
-    storage.download_file.side_effect = lambda object_name, file_path: Path(
-        file_path
-    ).write_bytes(b"test media")
+    storage.download_file.side_effect = (
+        lambda object_name, file_path: Path(file_path).write_bytes(
+            b"test media"
+        )
+    )
 
     file_path = workflow.retrieve_input(
         "job123",
@@ -66,6 +86,28 @@ def test_retrieve_input(tmp_path):
         assert downloaded_path == file_path
         assert Path(file_path).exists()
         assert Path(file_path).read_bytes() == b"test media"
+    finally:
+        workflow.cleanup(file_path)
+
+
+def test_retrieve_input_preserves_extension(tmp_path):
+    storage = Mock()
+    workflow = S3MediaWorkflow(storage=storage)
+
+    storage.download_file.side_effect = (
+        lambda object_name, file_path: Path(file_path).write_bytes(
+            b"test media"
+        )
+    )
+
+    file_path = workflow.retrieve_input(
+        "job123",
+        "C:\\uploads\\video.mp4",
+    )
+
+    try:
+        assert Path(file_path).suffix == ".mp4"
+        assert Path(file_path).exists()
     finally:
         workflow.cleanup(file_path)
 
@@ -107,6 +149,29 @@ def test_upload_processed(tmp_path):
     )
 
 
+def test_upload_processed_with_filename(tmp_path):
+    storage = Mock()
+    workflow = S3MediaWorkflow(storage=storage)
+
+    file_path = tmp_path / "processed.mp4"
+    file_path.write_bytes(b"processed media")
+
+    object_name = workflow.upload_processed(
+        "job123",
+        str(file_path),
+        "C:\\uploads\\final.mp4",
+    )
+
+    storage.upload_file.assert_called_once_with(
+        str(file_path),
+        "output/job123/processed/final.mp4",
+    )
+
+    assert object_name == (
+        "output/job123/processed/final.mp4"
+    )
+
+
 def test_upload_thumbnail(tmp_path):
     storage = Mock()
     workflow = S3MediaWorkflow(storage=storage)
@@ -126,6 +191,29 @@ def test_upload_thumbnail(tmp_path):
 
     assert object_name == (
         "output/job123/thumbnail/thumbnail.jpg"
+    )
+
+
+def test_upload_thumbnail_with_filename(tmp_path):
+    storage = Mock()
+    workflow = S3MediaWorkflow(storage=storage)
+
+    file_path = tmp_path / "thumb.jpg"
+    file_path.write_bytes(b"thumbnail")
+
+    object_name = workflow.upload_thumbnail(
+        "job123",
+        str(file_path),
+        "C:\\uploads\\final-thumbnail.jpg",
+    )
+
+    storage.upload_file.assert_called_once_with(
+        str(file_path),
+        "output/job123/thumbnail/final-thumbnail.jpg",
+    )
+
+    assert object_name == (
+        "output/job123/thumbnail/final-thumbnail.jpg"
     )
 
 
@@ -185,3 +273,14 @@ def test_cleanup(tmp_path):
 
     assert not file1.exists()
     assert not file2.exists()
+
+
+def test_cleanup_missing_file(tmp_path):
+    storage = Mock()
+    workflow = S3MediaWorkflow(storage=storage)
+
+    missing_file = tmp_path / "missing.mp4"
+
+    workflow.cleanup(str(missing_file))
+
+    assert not missing_file.exists()

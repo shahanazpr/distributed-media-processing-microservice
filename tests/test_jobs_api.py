@@ -70,3 +70,5 @@ def test_redis_failure(mock_job_store):
     response = failing_client.get("/jobs/test-job-1")
 
     assert response.status_code == 500
+    assert response.json() == {"detail": "Internal server error"}
+    assert "Redis unavailable" not in response.text

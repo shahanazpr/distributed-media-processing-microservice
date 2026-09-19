@@ -1,6 +1,5 @@
 import os
 
-from app.core import config
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
@@ -14,12 +13,21 @@ class S3Storage:
         if not self.bucket_name:
             raise ValueError("S3_BUCKET_NAME is not configured")
 
+        self.endpoint_url = os.getenv("S3_ENDPOINT_URL")
+        self.public_endpoint_url = os.getenv(
+            "S3_PUBLIC_ENDPOINT_URL",
+            self.endpoint_url,
+        )
+
+        self.aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+        self.aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+
         self.client = client or boto3.client(
             "s3",
             region_name=self.region,
-            endpoint_url=os.getenv("S3_ENDPOINT_URL"),
-            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+            endpoint_url=self.endpoint_url,
+            aws_access_key_id=self.aws_access_key_id,
+            aws_secret_access_key=self.aws_secret_access_key,
             config=Config(
                 signature_version="s3v4",
                 s3={"addressing_style": "path"},
@@ -77,7 +85,22 @@ class S3Storage:
     ) -> str:
         """Generate a presigned URL for uploading an object to S3."""
         try:
-            return self.client.generate_presigned_url(
+            public_client = self.client
+
+            if self.public_endpoint_url != self.endpoint_url:
+                public_client = boto3.client(
+                    "s3",
+                    region_name=self.region,
+                    endpoint_url=self.public_endpoint_url,
+                    aws_access_key_id=self.aws_access_key_id,
+                    aws_secret_access_key=self.aws_secret_access_key,
+                    config=Config(
+                        signature_version="s3v4",
+                        s3={"addressing_style": "path"},
+                    ),
+                )
+
+            return public_client.generate_presigned_url(
                 "put_object",
                 Params={
                     "Bucket": self.bucket_name,
