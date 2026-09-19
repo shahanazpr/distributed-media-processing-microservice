@@ -1,26 +1,27 @@
 import os
-
 from celery import Celery
 
+RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
+RABBITMQ_PORT = os.getenv("RABBITMQ_PORT", "5672")
+RABBITMQ_USER = os.getenv("RABBITMQ_USER", "guest")
+RABBITMQ_PASSWORD = os.getenv("RABBITMQ_PASSWORD", "guest")
 
-RABBITMQ_URL = os.getenv(
-    "CELERY_BROKER_URL",
-    "amqp://guest:guest@localhost:5672//",
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = os.getenv("REDIS_PORT", "6379")
+
+RABBITMQ_URL = (
+    f"amqp://{RABBITMQ_USER}:{RABBITMQ_PASSWORD}"
+    f"@{RABBITMQ_HOST}:{RABBITMQ_PORT}//"
 )
 
-REDIS_URL = os.getenv(
-    "CELERY_RESULT_BACKEND",
-    "redis://localhost:6379/0",
-)
-
+REDIS_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
 
 celery_app = Celery(
     "media_processing",
     broker=RABBITMQ_URL,
     backend=REDIS_URL,
-    include=["app.tasks.media_tasks"],
+    include=["app.tasks.tasks"],
 )
-
 
 celery_app.conf.update(
     task_serializer="json",
