@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, Response
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from app.api.jobs import router as jobs_router
 
@@ -31,7 +31,7 @@ async def health_check():
 
 
 @app.get("/metrics")
-def metrics():
+async def metrics():
     return Response(
         content=generate_latest(),
         media_type=CONTENT_TYPE_LATEST,
