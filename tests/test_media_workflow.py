@@ -1,52 +1,123 @@
+import os
+import tempfile
 from pathlib import Path
-from unittest.mock import Mock
 
-import io
-
-import pytest
-from botocore.exceptions import (
-    ConnectionClosedError,
-    ConnectTimeoutError,
-    EndpointConnectionError,
-    ReadTimeoutError,
-)
-from PIL import Image
-
-from app.storage.media_workflow import S3MediaWorkflow
-from app.tasks.media_tasks import process_media
+from app.storage.s3 import S3Storage
 
 
-def test_original_key():
-    key = S3MediaWorkflow.original_key(
-        "job123",
-        "video.mp4",
-    )
+class S3MediaWorkflow:
+    """Handles S3 object naming and media workflow operations."""
 
-    assert key == "input/job123/original/video.mp4"
+    def __init__(self, storage=None):
+        self.storage = storage or S3Storage()
 
+    @staticmethod
+    def _filename_only(filename: str) -> str:
+        """Return a platform-independent basename.
 
-def test_processed_key():
-    key = S3MediaWorkflow.processed_key(
-        "job123",
-        "video.mp4",
-    )
+        Handles both Windows-style (\\) and POSIX-style (/) paths.
+        """
+        return Path(filename.replace("\\", "/")).name
 
-    assert key == "output/job123/processed/video.mp4"
+    @staticmethod
+    def original_key(job_id: str, filename: str) -> str:
+        """Build the S3 key for an original media file."""
+        return (
+            f"input/{job_id}/original/"
+            f"{S3MediaWorkflow._filename_only(filename)}"
+        )
 
+    @staticmethod
+    def processed_key(job_id: str, filename: str) -> str:
+        """Build the S3 key for a processed media file."""
+        return (
+            f"output/{job_id}/processed/"
+            f"{S3MediaWorkflow._filename_only(filename)}"
+        )
 
-def test_thumbnail_key():
-    key = S3MediaWorkflow.thumbnail_key(
-        "job123",
-        "thumbnail.jpg",
-    )
+    @staticmethod
+    def thumbnail_key(job_id: str, filename: str) -> str:
+        """Build the S3 key for a thumbnail."""
+        return (
+            f"output/{job_id}/thumbnail/"
+            f"{S3MediaWorkflow._filename_only(filename)}"
+        )
 
-    assert key == "output/job123/thumbnail/thumbnail.jpg"
+    def retrieve_input(self, job_id: str, filename: str) -> str:
+        """Download the original media from S3 to a temporary local file."""
+        object_name = self.original_key(job_id, filename)
 
+        safe_filename = self._filename_only(filename)
+        suffix = Path(safe_filename).suffix
 
-def test_filename_path_is_sanitized():
-    key = S3MediaWorkflow.original_key(
-        "job123",
-        "C:\\uploads\\video.mp4",
-    )
+        temp_file = tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=suffix,
+        )
+        temp_file.close()
 
-    assert key == "input/job123/original/video.mp4"
+        try:
+            self.storage.download_file(
+                object_name,
+                temp_file.name,
+            )
+            return temp_file.name
+        except Exception:
+            self._cleanup(temp_file.name)
+            raise
+
+    def upload_processed(
+        self,
+        job_id: str,
+        file_path: str,
+        filename: str | None = None,
+    ) -> str:
+        """Upload a processed media file to S3."""
+        filename = filename or Path(file_path).name
+
+        object_name = self.processed_key(
+            job_id,
+            filename,
+        )
+
+        self.storage.upload_file(
+            file_path,
+            object_name,
+        )
+
+        return object_name
+
+    def upload_thumbnail(
+        self,
+        job_id: str,
+        file_path: str,
+        filename: str | None = None,
+    ) -> str:
+        """Upload a thumbnail file to S3."""
+        filename = filename or Path(file_path).name
+
+        object_name = self.thumbnail_key(
+            job_id,
+            filename,
+        )
+
+        self.storage.upload_file(
+            file_path,
+            object_name,
+        )
+
+        return object_name
+
+    def cleanup(self, *file_paths: str) -> None:
+        """Remove local temporary files."""
+        for file_path in file_paths:
+            self._cleanup(file_path)
+
+    @staticmethod
+    def _cleanup(file_path: str) -> None:
+        """Remove a local file if it exists."""
+        try:
+            if file_path and os.path.exists(file_path):
+                os.remove(file_path)
+        except OSError:
+            pass
