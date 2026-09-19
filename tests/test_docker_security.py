@@ -8,7 +8,7 @@ def test_internal_services_do_not_expose_host_ports():
     content = COMPOSE_FILE.read_text(encoding="utf-8")
 
     redis_section = content.split("  redis:", 1)[1].split("  rabbitmq:", 1)[0]
-    rabbitmq_section = content.split("  rabbitmq:", 1)[1]
+    rabbitmq_section = content.split("  rabbitmq:", 1)[1].split("  minio:", 1)[0]
 
     assert "ports:" not in redis_section
     assert "ports:" not in rabbitmq_section
