@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Request, Response
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from app.api.jobs import router as jobs_router
@@ -11,6 +11,15 @@ app = FastAPI(
 )
 
 app.include_router(jobs_router)
+
+
+@app.exception_handler(Exception)
+async def internal_server_error_handler(request: Request, exc: Exception):
+    return Response(
+        content='{"detail":"Internal server error"}',
+        status_code=500,
+        media_type="application/json",
+    )
 
 
 @app.get("/health")
